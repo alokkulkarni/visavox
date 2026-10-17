@@ -245,7 +245,7 @@ Research on 2026-10-17 found no supported way for a bot to be the agent-side par
 
 | ID | Requirement |
 |---|---|
-| NFR-S1 | OWASP ASVS 4.0 Level 2 for all web/API surfaces; annual external penetration test before GA. |
+| NFR-S1 | OWASP ASVS 5.0 Level 2 for all web/API surfaces; annual external penetration test before GA. |
 | NFR-S2 | Encryption in transit (TLS 1.2+, DTLS-SRTP for media) and at rest with per-tenant AWS KMS keys; biometric data under a separate key hierarchy. |
 | NFR-S3 | No secrets in code; Secrets Manager only; secret scanning, SAST (Semgrep), SCA and container scanning block merges on high/critical findings. |
 | NFR-S4 | No personal data or biometric data in logs, traces or metrics labels. |
