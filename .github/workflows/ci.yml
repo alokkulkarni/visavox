@@ -65,6 +65,19 @@ jobs:
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Gitleaks findings as annotations (redacted)
+        if: failure()
+        run: |
+          [ -f results.sarif ] || exit 0
+          python3 - <<'PY'
+          import json
+          for run in json.load(open("results.sarif")).get("runs", []):
+              for r in run.get("results", []):
+                  loc = r["locations"][0]["physicalLocation"]
+                  commit = r.get("partialFingerprints", {}).get("commitSha", "")[:7]
+                  print(f"::error file={loc['artifactLocation']['uri']},line={loc['region']['startLine']},"
+                        f"title={r.get('ruleId')}::secret-like value in commit {commit}; remove it or add an exact allowlist entry to .gitleaks.toml")
+          PY
       - name: Trivy filesystem scan (high and critical block)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
