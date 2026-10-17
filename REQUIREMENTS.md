@@ -121,7 +121,7 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 | CON-03 | MUST | Consent record stores scope (live agent, human-voice, scripted video, languages, channels), term/expiry, tenant, subject contact, evidence hashes. | AC: an avatar used outside its consent scope is refused by the engine. |
 | CON-04 | MUST | The likeness subject can revoke consent via a link sent to them, without needing tenant permission. | AC: after revocation the avatar and voice are disabled in all sessions within 5 minutes, live sessions end gracefully, and renders are blocked. |
 | CON-05 | MUST | Tenant attests it has the right to use the likeness and accepts the acceptable-use policy before submission. | AC: attestation stored with the consent record. |
-| CON-06 | SHOULD | Block avatars whose face matches a protected list (public figures, takedown requests). | AC: matches route to manual review; no activation without operator approval. |
+| CON-06 | MUST | Block avatars whose face or voice matches a protected list (public figures, takedown requests, prior revocations). | AC: matches route to manual review; no activation without operator approval. |
 
 ### 6.5 Real-time sessions — common (RT)
 
@@ -133,7 +133,7 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 | RT-04 | MUST | **AI-agent drive**: built-in pipeline (VAD → streaming STT → turn detection → LLM → streaming TTS → lip-sync) configurable per agent: system prompt, knowledge sources, tools/webhooks, LLM model, guardrails, escalation rules. | AC: configured agent holds a multi-turn conversation in the conversation test suite. |
 | RT-05 | MUST | **Human-voice drive**: a human agent's microphone audio drives the avatar in real time; the end customer hears the human's own voice and sees the avatar. Converting the human's voice into a cloned voice (speech-to-speech) is out of scope for R1. The avatar's likeness consent must include `human_voice` scope. | AC: glass-to-glass latency and A/V sync within NFR-L/NFR-Q. |
 | RT-06 | MUST | **External-audio drive**: an external agent (e.g. a tenant's LiveKit Agents worker) streams its TTS audio to the avatar, which returns synchronised video; supports clear-buffer (interrupt) and playback-finished signals. | AC: LiveKit avatar contract tests (SDD §7.3). |
-| RT-07 | MUST | Mandatory **AI disclosure**: a visible "AI avatar" indicator on video and, for `ai_agent` mode, a spoken disclosure at session start (wording tenant-editable, cannot be disabled). | AC: disclosure present in 100 % of sessions in e2e tests. |
+| RT-07 | MUST | Mandatory **AI disclosure** per CMP-05: a visible "AI avatar" indicator on video and, for `ai_agent` mode, a spoken disclosure naming the tenant before the first substantive turn and after every transfer or reconnect (wording tenant-editable, cannot be disabled). | AC: disclosure present in 100 % of sessions in e2e tests. |
 | RT-08 | MUST | Session events (started, speaking, interrupted, escalated, ended, error) via webhooks and a per-session event stream. | AC: event schema contract tests. |
 | RT-09 | MUST | Optional session recording (tenant setting, off by default), stored in region with C2PA manifest and watermarks. | AC: recording only exists when enabled; retention honoured. |
 | RT-10 | MUST | Conversation transcript and LLM tool calls are logged per session for the tenant (PII-redaction option). | AC: transcript available via API within 60 s of session end. |
@@ -261,9 +261,25 @@ The integration mechanism for CNA is decided in `SDD.md` §8.1 after the feasibi
 
 ## 8. Compliance requirements (CMP)
 
-Populated from the regulatory research in `SDD.md` §10. This is engineering interpretation, not legal advice; counsel review is DAG node L1.
+Derived from regulatory research dated 2026-10-17, summarised with sources in `SDD.md` §10. This is engineering interpretation, **not legal advice**; counsel review is DAG node L1 and must complete before GA. Visavox is the AI Act *provider* (Art 50(1), 50(2)); each tenant is the *deployer* (Art 50(4)).
 
-*(see §8 table — filled at freeze)*
+| ID | Pri | Requirement | Driver | Acceptance criteria |
+|---|---|---|---|---|
+| CMP-01 | MUST | Consent capture is **live only**: the subject records in-browser via a Visavox link; uploaded consent footage is never accepted (enterprise exception requires operator review, R2). | Industry practice; UK/EU Art 9 explicit consent; BIPA s15(b) | AC: API has no consent-upload endpoint; capture page enforces live camera + passcode. |
+| CMP-02 | MUST | Consent record captures explicit consent to biometric processing, purpose, permitted uses as a "reasonably specific description", retention term, tenant, subject, timestamp, language; e-signature accepted. | UK/EU GDPR Art 9; BIPA s15(b); Cal. Lab. Code §927 | AC: record schema validated; exportable to the subject on request. |
+| CMP-03 | MUST | Photo avatars use the same consent flow as Studio avatars (no photo-avatar exemption). | Consistency; misuse risk | AC: AVA-04 tests cover both avatar types. |
+| CMP-04 | MUST | Block likenesses and voices of minors, deceased people and listed public figures unless rights are evidenced and operator-approved; tenant attests subject is an adult. | Cal. AB 1836; ELVIS Act; AUP | AC: age attestation required; protected-list match routes to review (CON-06 becomes MUST). |
+| CMP-05 | MUST | Spoken AI disclosure before the first substantive turn, naming the tenant on whose behalf the avatar acts; repeated after transfers and reconnects; persistent visual "AI" indicator throughout video. | EU AI Act Art 50(1) and Commission guidelines (20 Jul 2026) | AC: e2e tests assert disclosure audio precedes first agent turn and on every transfer; indicator present in every frame sample. |
+| CMP-06 | MUST | A path to a human is always available on request in AI-agent mode (tenant configures the target). | FCA Consumer Duty expectations; Utah SB 226 | AC: "speak to a person" intent triggers escalation in conversation tests. |
+| CMP-07 | MUST | Deployer labelling tools for tenants: visible label overlay for rendered and live video, start-and-interval audio disclaimer for long content; **on by default** for EU-region tenants. | EU AI Act Art 50(4); Code of Practice (Jun 2026) | AC: labels present in renders by default for EU tenants; tenant can configure but not remove for deepfake content. |
+| CMP-08 | MUST | Rendered files carry a C2PA 2.4 manifest with AI-disclosure assertion and latent disclosure fields (provider, system/version, timestamp, unique ID), signed with a certificate eligible for the C2PA Trust List, plus an imperceptible audio and video watermark. | EU AI Act Art 50(2); Code of Practice; Cal. SB 942 | AC: C2PA validator reports valid manifest; watermark detector passes (VID-06). |
+| CMP-09 | MUST | Real-time streams carry in-band imperceptible audio and video watermarks (no segment-based C2PA on WebRTC). | EU AI Act Art 50(2) | AC: detector identifies watermarks in recorded live sessions (TRU-03). |
+| CMP-10 | MUST | Free public detection endpoint for Visavox watermarks and manifests; terms of service prohibit stripping provenance. | Code of Practice; SB 942 | AC: public endpoint live before GA; interoperability target 2027-02-02. |
+| CMP-11 | MUST | Block generation of intimate imagery and any sexual content involving real people, and any content involving minors, at prompt, script and output stages; retain filter evidence. | EU AI Act Art 5 additions (from 2026-12-02); UK SOA 2003 ss66E–66I | AC: red-team set blocked at 100 % for the prohibited categories; filter evidence logged. |
+| CMP-12 | MUST | Takedown channel removes reported intimate imagery and identical copies within 48 hours; likeness complaints handled in the same workflow. | US TAKE IT DOWN Act | AC: drill test meets 48 h; operator SLA alerting. |
+| CMP-13 | MUST | Published biometric retention schedule: delete source media, avatar and voice models on purpose end or revocation, and at most 3 years after last use (≤ 1 year after purpose end for Texas subjects); deletion propagates to backups within 35 days with a deletion attestation. | BIPA s15(a); Texas CUBI; storage limitation | AC: retention job tests; attestation generated per deletion. |
+| CMP-14 | MUST | DPIA per region before GA; no operator access from US-designated countries of concern; support access to tenant data is in-region or covered by a transfer risk assessment. | UK/EU GDPR Art 35; DOJ bulk data rule; ICO transfer guidance (Jan 2026) | AC: DPIA documents in repo; access-location controls enforced and tested. |
+| CMP-15 | MUST | Release 1 offers no outbound calling; any future outbound AI-voice calling must check TCPA consent and opt-out before dialling. | FCC 2024 TCPA ruling | AC: no outbound dialling API exists in R1. |
 
 ## 9. Glossary
 
