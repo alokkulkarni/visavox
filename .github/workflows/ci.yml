@@ -113,7 +113,7 @@ jobs:
         env:
           LIVEKIT_URL: ws://localhost:7880
           S3_RESULTS_PATH: s3-results.jsonl
-          CONTRACT_REPEAT: "5"  # temporary: reproduce an intermittent failure (S3)
+          CONTRACT_REPEAT: "1"  # raise temporarily to reproduce timing issues
         run: |
           status=0
           for i in $(seq 1 "$CONTRACT_REPEAT"); do

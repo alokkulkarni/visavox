@@ -351,7 +351,7 @@ Trace context propagates from API through session service, agent runtime, avatar
 | R-04 | Training-data provenance of permissively licensed weights is unknown | Counsel review G1; prefer models with documented data |
 | R-05 | LiveKit avatar worker API is Python-only and its reference example was removed | Contract tests and version guard; upstream tracking |
 | R-06 | Connect has no supported agent-side bot video; A2A coverage of WebRTC contacts unverified; softphone/Chime A/V skew for human-voice avatars Avatar tile chosen (D-09); spike S2 before CA1; written AWS confirmation before any virtual-agent workaround |
-| R-07 | Transport and sync path alone measured at ~240 ms (S3, zero model time), above the 50–100 ms network share budgeted in §7.2; NFR-L2 p50 ≤ 1.0 s is at risk | S1 measures the end-to-end turn with real models; evaluate smaller `AvatarRunner` queues (private argument, version-guarded) and request a public option upstream |
+| R-07 | Transport and sync path alone measured at ~230 ms median, 192–241 ms (S3, zero model time), above the 50–100 ms network share budgeted in §7.2; NFR-L2 p50 ≤ 1.0 s is at risk | S1 measures the end-to-end turn with real models; evaluate smaller `AvatarRunner` queues (private argument, version-guarded) and request a public option upstream |
 | Q-01..08 | Counsel questions: special-category status of generative models; employee consent; SB 942 / TAKE IT DOWN coverage; who labels Art 50(4) deepfakes; whether model updates reset the AI Act grace period; SB 1001 and voice; WebRTC marking sufficiency; EU→US transfers if the DPF falls | G1 |
 
 ## 17. Architecture decision records (`docs/adr/`)
