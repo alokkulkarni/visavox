@@ -9,7 +9,6 @@ import pytest
 
 from licence_gate.registry import RegistryError, load_registry, validate
 
-
 VALID_SHA = "a" * 64
 
 

@@ -29,11 +29,6 @@ def model_entry(**overrides: Any) -> dict[str, Any]:
 
 
 @pytest.fixture
-def valid_sha() -> str:
-    return VALID_SHA
-
-
-@pytest.fixture
 def entry() -> Callable[..., dict[str, Any]]:
     """Factory for a minimal valid candidate entry; override fields to break one rule at a time."""
     return model_entry
