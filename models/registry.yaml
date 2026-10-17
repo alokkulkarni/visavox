@@ -1,0 +1,206 @@
+# Visavox model licence registry (ADR-005, NFR-S6). Validated by `make licence-check` in CI.
+#
+# Rules:
+#   - Only `approved` entries may be loaded by any service (enforced by the engine loader, E1).
+#   - `approved` needs a pinned version, SHA-256 per artefact, and archived licence texts under models/licences/.
+#   - Licences must be on the allowlist; conditional licences record their obligations in `conditions`.
+#   - Banned components (InsightFace models, CelebAMask-HQ parsers, dlib landmarks, CodeFormer, BFM) fail the gate.
+#
+# Candidates below come from SDD §6.1 (research 2026-10-17). Spike S1 benchmarks them,
+# re-checks every licence file, pins hashes and promotes the winners to `approved` (ADR-006).
+version: 1
+models:
+  # --- Real-time avatar -----------------------------------------------------
+  - name: ditto-talkinghead
+    purpose: realtime_photo_avatar
+    status: candidate
+    source_url: https://github.com/antgroup/ditto-talkinghead
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    conditions: >-
+      Weights licence is stated in the README only; confirm in S1. The upstream bundle ships
+      InsightFace detector and landmark files, which must be removed and replaced with MediaPipe or YuNet.
+    components: [mediapipe-face, yunet, hubert]
+    requirements: [RT-02, AVA-01, NFR-L3, NFR-Q1]
+
+  - name: soulx-flashhead-pro
+    purpose: realtime_photo_avatar
+    status: candidate
+    source_url: https://github.com/Soul-AILab/SoulX-FlashHead
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    conditions: Pro variant only; the Lite variant adds the LTX VAE under Open-RAIL-M use restrictions.
+    components: [wan-vae, wav2vec2, mediapipe-face]
+    requirements: [RT-02, AVA-01, NFR-L3, NFR-Q1]
+
+  - name: musetalk-1.5
+    purpose: realtime_studio_avatar
+    status: candidate
+    source_url: https://github.com/TMElyralab/MuseTalk
+    code_licence: MIT
+    weights_licence: LicenseRef-MuseTalk-Weights
+    commercial_use: true
+    conditions: >-
+      Model card permits any purpose including commercial use. The default face parser is
+      CelebAMask-HQ-trained and must be replaced. DWPose and S3FD weight provenance must be verified in S1.
+      The mouth region is 256 px, so retraining at 512 px is planned.
+    components: [whisper-tiny, sd-vae]
+    requirements: [RT-02, AVA-02, NFR-Q1, NFR-Q3]
+
+  # --- Offline render ---------------------------------------------------------
+  - name: infinitetalk
+    purpose: offline_render
+    status: candidate
+    source_url: https://github.com/MeiGen-AI/InfiniteTalk
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    components: [wan2.1-i2v-14b, chinese-wav2vec2-base]
+    requirements: [VID-01, NFR-L6]
+
+  - name: wan2.2-s2v-14b
+    purpose: offline_render
+    status: candidate
+    source_url: https://huggingface.co/Wan-AI/Wan2.2-S2V-14B
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    requirements: [VID-01, NFR-L6]
+
+  # --- Voice -----------------------------------------------------------------
+  - name: qwen3-tts
+    purpose: tts_clone
+    status: candidate
+    source_url: https://github.com/QwenLM/Qwen3-TTS
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    requirements: [VOI-01, VOI-02, NFR-L2]
+
+  - name: fun-cosyvoice3
+    purpose: tts_clone
+    status: candidate
+    source_url: https://github.com/FunAudioLLM/CosyVoice
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    requirements: [VOI-01, VOI-02, NFR-L2]
+
+  - name: chatterbox
+    purpose: tts_clone
+    status: candidate
+    source_url: https://github.com/resemble-ai/chatterbox
+    code_licence: MIT
+    weights_licence: MIT
+    commercial_use: true
+    components: [perth-watermarker]
+    requirements: [VOI-01, VOI-02, VOI-05]
+
+  - name: kokoro-82m
+    purpose: tts_stock
+    status: candidate
+    source_url: https://huggingface.co/hexgrad/Kokoro-82M
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    requirements: [VOI-01]
+
+  # --- Speech recognition and turn-taking --------------------------------------
+  - name: nemotron-3.5-asr-streaming-0.6b
+    purpose: stt
+    status: candidate
+    source_url: https://huggingface.co/nvidia
+    code_licence: Apache-2.0
+    weights_licence: OpenMDW-1.1
+    commercial_use: true
+    conditions: Model card states it is ready for commercial use; retain licence notices. Exact repository pinned in S1.
+    requirements: [RT-04, NFR-L2]
+
+  - name: parakeet-tdt-0.6b-v3
+    purpose: stt
+    status: candidate
+    source_url: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+    code_licence: Apache-2.0
+    weights_licence: CC-BY-4.0
+    commercial_use: true
+    conditions: Attribution in product notices.
+    requirements: [RT-04, NFR-L2]
+
+  - name: silero-vad
+    purpose: vad
+    status: candidate
+    source_url: https://github.com/snakers4/silero-vad
+    code_licence: MIT
+    weights_licence: MIT
+    commercial_use: true
+    requirements: [RT-03, RT-04]
+
+  - name: livekit-turn-detector-v1-mini
+    purpose: end_of_turn
+    status: candidate
+    source_url: https://huggingface.co/livekit/turn-detector
+    code_licence: Apache-2.0
+    weights_licence: LiveKit-Model-License
+    commercial_use: true
+    conditions: May only be used within the LiveKit Agents framework (agent-runtime). Never load it elsewhere.
+    requirements: [RT-04, NFR-L2]
+
+  - name: smart-turn-v3
+    purpose: end_of_turn
+    status: candidate
+    source_url: https://github.com/pipecat-ai/smart-turn
+    code_licence: BSD-2-Clause
+    weights_licence: BSD-2-Clause
+    commercial_use: true
+    requirements: [RT-04, NFR-L2]
+
+  # --- Face analysis (QC gate and consent verification) ------------------------
+  - name: mediapipe-face
+    purpose: face_detection
+    status: candidate
+    source_url: https://github.com/google-ai-edge/mediapipe
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    conditions: Model licence was seen only through a copy; confirm against Google's model card in S1.
+    requirements: [AVA-03, CON-02]
+
+  - name: yunet
+    purpose: face_detection
+    status: candidate
+    source_url: https://github.com/opencv/opencv_zoo
+    code_licence: MIT
+    weights_licence: MIT
+    commercial_use: true
+    requirements: [AVA-03, CON-02]
+
+  - name: auraface-v1
+    purpose: face_verification
+    status: candidate
+    source_url: https://huggingface.co/fal/AuraFace-v1
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    conditions: Model card states it was trained on commercially and publicly available data; reconfirm in S4.
+    requirements: [CON-02, NFR-S5]
+
+  # --- Watermarking ------------------------------------------------------------
+  - name: videoseal
+    purpose: video_watermark
+    status: candidate
+    source_url: https://github.com/facebookresearch/videoseal
+    code_licence: MIT
+    weights_licence: MIT
+    commercial_use: true
+    requirements: [TRU-03, CMP-08, CMP-09]
+
+  - name: audioseal
+    purpose: audio_watermark
+    status: candidate
+    source_url: https://github.com/facebookresearch/audioseal
+    code_licence: MIT
+    weights_licence: MIT
+    commercial_use: true
+    requirements: [VOI-05, TRU-03, CMP-09]
