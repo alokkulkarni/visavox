@@ -21,6 +21,7 @@ dev = [
     "licence-gate",
     "s3-livekit-contract",
     "pytest-asyncio>=1.0",
+    "pytest-timeout>=2.3",
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "ruff>=0.8",
@@ -32,6 +33,8 @@ dev = [
 addopts = "-ra --strict-markers --import-mode=importlib"
 testpaths = ["tools", "spikes", "services", "tests"]
 asyncio_mode = "auto"
+# Fail hung tests with their stack instead of blocking CI (S3 found an intermittent hang).
+timeout = 120
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "contract: API, LiveKit avatar contract and Connect event contract tests",

@@ -8,12 +8,13 @@ S3_RESULTS_PATH when it is set.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import math
 import os
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -110,6 +111,7 @@ class ContractSession:
     viewer_room: rtc.Room
     audio_out: DataStreamAudioOutput
     worker: AvatarWorker
+    watchers: list[FrameWatcher] = field(default_factory=list)
 
     def avatar(self) -> rtc.RemoteParticipant | None:
         return self.viewer_room.remote_participants.get(self.avatar_identity)
@@ -127,23 +129,37 @@ class ContractSession:
         assert track is not None
         watcher = FrameWatcher()
         watcher.task = asyncio.create_task(watcher.run(track))
+        self.watchers.append(watcher)
         await wait_for(lambda: len(watcher.frames) > 0, timeout=10.0)
         return watcher
+
+
+async def _bounded[T](step: str, awaitable: Awaitable[T], seconds: float) -> T:
+    """Await one setup or teardown step; a hang fails with the step's name instead of blocking CI."""
+    try:
+        async with asyncio.timeout(seconds):
+            return await awaitable
+    except TimeoutError as exc:
+        raise TimeoutError(f"{step} did not finish within {seconds:.0f} s") from exc
 
 
 @pytest.fixture
 async def session() -> AsyncIterator[ContractSession]:
     suffix = uuid.uuid4().hex[:8]
     room_name, agent, avatar = f"s3-{suffix}", f"agent-{suffix}", f"avatar-{suffix}"
-    agent_room = await connect(agent, room_name, kind="agent")
-    viewer_room = await connect(f"viewer-{suffix}", room_name)
-    worker = await start_avatar_worker(
-        url=URL,
-        token=avatar_token(
-            api_key=KEY, api_secret=SECRET, room=room_name, avatar_identity=avatar, agent_identity=agent
+    agent_room = await _bounded("agent connect", connect(agent, room_name, kind="agent"), 15)
+    viewer_room = await _bounded("viewer connect", connect(f"viewer-{suffix}", room_name), 15)
+    worker = await _bounded(
+        "avatar worker start",
+        start_avatar_worker(
+            url=URL,
+            token=avatar_token(
+                api_key=KEY, api_secret=SECRET, room=room_name, avatar_identity=avatar, agent_identity=agent
+            ),
+            agent_identity=agent,
+            options=OPTIONS,
         ),
-        agent_identity=agent,
-        options=OPTIONS,
+        30,
     )
     audio_out = DataStreamAudioOutput(
         agent_room,
@@ -152,7 +168,14 @@ async def session() -> AsyncIterator[ContractSession]:
         wait_remote_track=rtc.TrackKind.KIND_VIDEO,
         wait_playback_start=True,
     )
-    yield ContractSession(room_name, agent, avatar, agent_room, viewer_room, audio_out, worker)
-    await worker.aclose()
-    await agent_room.disconnect()
-    await viewer_room.disconnect()
+    contract = ContractSession(room_name, agent, avatar, agent_room, viewer_room, audio_out, worker)
+    yield contract
+
+    for watcher in contract.watchers:
+        if watcher.task is not None:
+            watcher.task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await _bounded("frame watcher stop", watcher.task, 5)
+    await _bounded("avatar worker close", worker.aclose(), 15)
+    await _bounded("agent disconnect", agent_room.disconnect(), 10)
+    await _bounded("viewer disconnect", viewer_room.disconnect(), 10)
