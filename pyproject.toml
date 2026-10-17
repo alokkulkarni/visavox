@@ -24,7 +24,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers --import-mode=importlib"
 testpaths = ["tools", "services", "tests"]
 markers = [
     "contract: API, LiveKit avatar contract and Connect event contract tests",
