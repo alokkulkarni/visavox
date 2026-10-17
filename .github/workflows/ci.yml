@@ -112,18 +112,26 @@ jobs:
         env:
           LIVEKIT_URL: ws://localhost:7880
           S3_RESULTS_PATH: s3-results.jsonl
-        run: make test-contract PYTEST_ARGS="--junitxml=contract-junit.xml"
+          CONTRACT_REPEAT: "5"  # temporary: reproduce an intermittent failure (S3)
+        run: |
+          status=0
+          for i in $(seq 1 "$CONTRACT_REPEAT"); do
+            make test-contract PYTEST_ARGS="--junitxml=contract-junit-$i.xml" || status=1
+          done
+          exit $status
       - name: Test failures as annotations
         if: failure()
         run: |
-          [ -f contract-junit.xml ] || exit 0
+          ls contract-junit-*.xml >/dev/null 2>&1 || exit 0
           python3 - <<'PY'
+          import glob
           import xml.etree.ElementTree as ET
-          for case in ET.parse("contract-junit.xml").iter("testcase"):
+          for report in sorted(glob.glob("contract-junit-*.xml")):
+            for case in ET.parse(report).iter("testcase"):
               for kind in ("failure", "error"):
                   for node in case.findall(kind):
                       text = " ".join(((node.get("message") or "") + " " + (node.text or "")).split())[-900:]
-                      print(f"::error title={kind}: {case.get('classname')}.{case.get('name')}::{text}")
+                      print(f"::error title={report} {kind}: {case.get('classname')}.{case.get('name')}::{text}")
           PY
       - name: Publish S3 measurements as annotations
         if: always()
