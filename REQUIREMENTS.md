@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.1 (draft for freeze) |
+| Version | 1.0 |
 | Date | 2026-10-17 |
-| Status | **DRAFT — not frozen.** No implementation starts until the owner approves the freeze PR. |
+| Status | **FROZEN 2026-10-17** (approved by the owner in PR #1). Changes need a spec-change PR per `CLAUDE.md` rule 2. |
 | Owner | Alok Kulkarni |
 | Companion | [`SDD.md`](SDD.md) (design), [`CLAUDE.md`](CLAUDE.md) (engineering rules) |
 
@@ -32,7 +32,7 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 | D-06 | First release | All three modes in Release 1 (sequenced on one shared engine, see `SDD.md` §12) |
 | D-07 | Footprint | Multi-region; tenant chooses data region; 200+ concurrent live sessions |
 | D-08 | Product / repo | Visavox, `alokkulkarni/visavox` |
-| D-09 | Connect pattern A mechanism | **Open — owner decides at freeze.** Recommended: avatar tile in the customer's call client via the Visavox SDK (supported APIs). Alternative: headless virtual-agent workaround (undocumented APIs). |
+| D-09 | Connect pattern A mechanism | **Avatar tile** in the customer's call client via the Visavox web SDK, using supported Connect APIs only (owner, 2026-10-17). Headless virtual-agent workaround is out of scope for R1 (§4.2). |
 
 ## 3. Actors
 
@@ -63,12 +63,13 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 - Native iOS/Android SDKs (Connect's own mobile SDKs receive avatar video as ordinary remote video).
 - Marketplace of stock human avatars (Release 1 ships tenant-owned likenesses plus a small set of synthetic, non-real-person stock avatars).
 - On-premises deployment.
+- Connect "virtual agent" avatars (headless agent users injecting media through undocumented APIs); reconsider only with written AWS confirmation (D-09).
 
-## 5. Assumptions to confirm at freeze
+## 5. Assumptions (accepted at freeze, 2026-10-17)
 
 | ID | Assumption | Impact if wrong |
 |---|---|---|
-| A-01 | The LLM behind the built-in AI agent is pluggable; default is Amazon Bedrock in the tenant's region. "Self-hosted" (D-03) applies to avatar, voice, lip-sync, STT and TTS models, not the LLM. | A self-hosted LLM adds a GPU fleet and changes cost and latency budgets. |
+| A-01 | **Confirmed by owner.** The LLM behind the built-in AI agent is pluggable; default is Amazon Bedrock in the tenant's region. "Self-hosted" (D-03) applies to avatar, voice, lip-sync, STT and TTS models, not the LLM. | A self-hosted LLM adds a GPU fleet and changes cost and latency budgets. |
 | A-02 | Tenants may also bring their own agent (a LiveKit Agents worker, or a Connect Lex / AI agent bot); Visavox then acts only as the avatar renderer. | None — additive. |
 | A-03 | Release 1 avatars are head-and-shoulders framing at 720p for live and 1080p for rendered video. | Higher resolution live video needs bigger GPUs per stream. |
 | A-04 | Launch regions: UK (eu-west-2), EU (eu-central-1), US (us-east-1). | New regions are a deployment of the same regional cell. |
@@ -143,14 +144,14 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 
 | ID | Pri | Requirement | Acceptance criteria |
 |---|---|---|---|
-| CNA-01 | MUST | When an end customer starts a Connect web or in-app video contact routed by the tenant's flow, the customer sees and hears the Visavox avatar in the agent's video position during the self-service stage. Mechanism per decision D-09 (`SDD.md` §8.2). | AC: e2e test in a Visavox-owned Connect test instance: customer sees and hears the avatar with A/V sync per NFR-Q2. |
+| CNA-01 | MUST | When an end customer starts a Connect web or in-app video contact routed by the tenant's flow, the customer sees and hears the Visavox avatar in the agent's video position during the self-service stage. Mechanism: avatar tile in the customer's call client (D-09, `SDD.md` §8.2); the customer client embeds the Visavox web SDK. | AC: e2e test in a Visavox-owned Connect test instance: customer sees and hears the avatar with A/V sync per NFR-Q2. |
 | CNA-06 | MUST | The avatar's speech on a Connect contact can come from Connect's own bot (`connect_bot`) or from the Visavox AI agent as an A2A collaborator (`visavox_a2a`). | AC: e2e tests for both brains; `visavox_a2a` subject to S2 confirming A2A on WebRTC contacts. |
 | CNA-02 | MUST | The avatar can escalate the same contact to a human agent queue, passing context (summary, intent, transcript link) as contact attributes; the human then appears on video as normal. | AC: e2e escalation test; attributes visible in agent workspace. |
 | CNA-03 | MUST | Tenant onboarding for Connect is self-service: a CloudFormation template creates a least-privilege cross-account role and any flow modules/Lambdas in the tenant's AWS account. | AC: template deploys cleanly in a fresh account; no long-lived keys exchanged. |
 | CNA-04 | MUST | Contact ID, avatar session ID and Connect instance ID are correlated in logs, events and transcripts. | AC: trace query returns the full path for a test contact. |
 | CNA-05 | MUST | Human-voice drive is supported on Connect video contacts: the human agent's voice drives the avatar instead of their camera. | AC: e2e test with a test agent. |
 
-Research on 2026-10-17 found no supported way for a bot to be the agent-side participant of a Connect WebRTC contact (`SDD.md` §8.1). The recommended mechanism is the Visavox web SDK "avatar tile" in the customer's call client; the alternative is a headless virtual-agent workaround. The owner chooses at freeze (D-09).
+Research on 2026-10-17 found no supported way for a bot to be the agent-side participant of a Connect WebRTC contact (`SDD.md` §8.1). The owner chose the Visavox web SDK "avatar tile" in the customer's call client (D-09). Customers on clients without the Visavox SDK (for example the hosted communications widget) do not get pattern A.
 
 ### 6.7 Amazon Connect pattern B — avatar panel beside Connect chat or voice (CNB)
 

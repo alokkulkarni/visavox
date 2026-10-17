@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.1 (draft for freeze) |
+| Version | 1.0 |
 | Date | 2026-10-17 |
-| Status | **DRAFT — not frozen** |
-| Requirements | [`REQUIREMENTS.md`](REQUIREMENTS.md) v0.1 |
+| Status | **FROZEN 2026-10-17** (approved by the owner in PR #1) |
+| Requirements | [`REQUIREMENTS.md`](REQUIREMENTS.md) v1.0 |
 | Rules | [`CLAUDE.md`](CLAUDE.md) |
 
 This document says **how** Visavox meets `REQUIREMENTS.md`. Requirement IDs in brackets (e.g. [RT-03]) show where each design element comes from; §13 traces every requirement group to design sections and delivery nodes. Research behind the design decisions was done on 2026-10-17 and is cited in §10 and Appendix A; every external claim marked *(verify in Sx)* is confirmed or overturned by the named spike before dependent build work starts.
@@ -202,7 +202,7 @@ A custom `AudioReceiver` in the avatar worker subscribes to the human agent's mi
 | The hosted communications widget cannot host a custom panel; **Touchpoint** supports custom modality components and a side-by-side layout. | Pattern B ships as a Touchpoint modality component and a ChatJS-compatible web component. |
 | Agent-side voice uses the softphone while video uses Chime. | Human-voice avatars on Connect risk audio leading video; mitigation in §8.4. |
 
-### 8.2 Pattern A — avatar on a Connect video contact (recommended mechanism, pending decision D-09)
+### 8.2 Pattern A — avatar on a Connect video contact (decided: avatar tile, D-09 / ADR-007)
 
 **Supported path ("avatar tile"):** the customer's video-call client embeds the Visavox web SDK alongside Touchpoint or a custom Chime client.
 1. Customer starts a Connect web/in-app video contact; the tenant's flow enters the self-service stage and invokes the Visavox Connect Lambda (deployed by CA3) with `ContactId`.
@@ -213,7 +213,7 @@ A custom `AudioReceiver` in the avatar worker subscribes to the human agent's mi
    - `visavox_a2a` — the Visavox agent runtime is the A2A collaborator: it receives caller audio from Connect, returns its TTS audio to Connect (for recording and analytics) **and** to the avatar worker (for the synced tile). Subject to A2A WebRTC coverage (S2).
 5. On escalation (`ESCALATE`, intent, or flow branch), the flow transfers to a queue with context attributes [CNA-02]; when the human accepts, the client removes the avatar tile and shows the human's Chime video on the **same contact**.
 
-**Workaround path ("virtual agent"), not in R1 unless D-09 says otherwise:** a pool of headless Connect agent users per tenant, each running a custom CCP that sends the avatar's video via `startVideoInput` and its audio via the undocumented media-stream replacement. It works with any customer client, but it depends on undocumented APIs, consumes one agent user per concurrent call, and its AWS service-terms position must be confirmed in writing first.
+**Rejected for R1 — workaround path ("virtual agent"):** a pool of headless Connect agent users per tenant, each running a custom CCP that sends the avatar's video via `startVideoInput` and its audio via the undocumented media-stream replacement. It works with any customer client, but it depends on undocumented APIs, consumes one agent user per concurrent call, and its AWS service-terms position must be confirmed in writing first.
 
 ### 8.3 Pattern B — avatar panel beside Connect chat or voice [CNB-01..04]
 - **Chat:** the Visavox web component (Touchpoint modality component or ChatJS-compatible element) subscribes to the contact's messages, assembles streamed chunks into sentences, and sends them to the session; the avatar speaks them with Visavox TTS, so lip-sync is exact. Text stays visible [CNB-02].
@@ -350,11 +350,21 @@ Trace context propagates from API through session service, agent runtime, avatar
 | R-03 | Licence drift (several TTS licences changed in 2025–26) | Pinned, archived licences; quarterly registry review |
 | R-04 | Training-data provenance of permissively licensed weights is unknown | Counsel review G1; prefer models with documented data |
 | R-05 | LiveKit avatar worker API is Python-only and its reference example was removed | Contract tests and version guard; upstream tracking |
-| R-06 | Connect has no supported agent-side bot video; A2A coverage of WebRTC contacts unverified; softphone/Chime A/V skew for human-voice avatars | D-09 decision; spike S2 before CA1; written AWS confirmation before any virtual-agent workaround |
+| R-06 | Connect has no supported agent-side bot video; A2A coverage of WebRTC contacts unverified; softphone/Chime A/V skew for human-voice avatars Avatar tile chosen (D-09); spike S2 before CA1; written AWS confirmation before any virtual-agent workaround |
 | Q-01..08 | Counsel questions: special-category status of generative models; employee consent; SB 942 / TAKE IT DOWN coverage; who labels Art 50(4) deepfakes; whether model updates reset the AI Act grace period; SB 1001 and voice; WebRTC marking sufficiency; EU→US transfers if the DPF falls | G1 |
 
-## 17. Architecture decision records (to be written in `docs/adr/` at freeze)
-ADR-001 AWS regional cells with EKS · ADR-002 LiveKit as internal media backbone · ADR-003 Python backend, TypeScript front end · ADR-004 Aurora PostgreSQL with RLS · ADR-005 Licence registry gate · ADR-006 Model selection (after S1) · ADR-007 Connect integration mechanism (after S2) · ADR-008 Consent and liveness components (after S4).
+## 17. Architecture decision records (`docs/adr/`)
+
+| ADR | Decision | Status |
+|---|---|---|
+| [001](docs/adr/ADR-001-regional-cells-on-aws.md) | AWS regional cells on EKS | Accepted |
+| [002](docs/adr/ADR-002-livekit-media-backbone.md) | LiveKit as the internal media backbone | Accepted |
+| [003](docs/adr/ADR-003-languages.md) | Python backend and engine, TypeScript front end | Accepted |
+| [004](docs/adr/ADR-004-aurora-postgres-rls.md) | Aurora PostgreSQL with row-level security | Accepted |
+| [005](docs/adr/ADR-005-licence-registry-gate.md) | Model licence registry gate in CI | Accepted |
+| 006 | Model selection | Pending S1 |
+| [007](docs/adr/ADR-007-connect-avatar-tile.md) | Connect pattern A via avatar tile | Accepted (mechanism details confirmed in S2) |
+| 008 | Consent, liveness and verification components | Pending S4 |
 
 ## Appendix A — Research sources (2026-10-17)
 Primary sources for every external claim in §3.3, §6.1, §7.3, §8.1 and §10.1 are listed in [`docs/research/sources-2026-10-17.md`](docs/research/sources-2026-10-17.md).
