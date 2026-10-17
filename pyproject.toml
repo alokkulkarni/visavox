@@ -10,14 +10,17 @@ package = false
 exclude-newer = "7 days"
 
 [tool.uv.workspace]
-members = ["tools/*"]
+members = ["tools/*", "spikes/*"]
 
 [tool.uv.sources]
 licence-gate = { workspace = true }
+s3-livekit-contract = { workspace = true }
 
 [dependency-groups]
 dev = [
     "licence-gate",
+    "s3-livekit-contract",
+    "pytest-asyncio>=1.0",
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "ruff>=0.8",
@@ -27,7 +30,9 @@ dev = [
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --import-mode=importlib"
-testpaths = ["tools", "services", "tests"]
+testpaths = ["tools", "spikes", "services", "tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "contract: API, LiveKit avatar contract and Connect event contract tests",
     "media: audio/video quality harness tests (GPU)",
@@ -37,7 +42,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["tools"]
+source = ["tools", "spikes"]
 
 [tool.coverage.report]
 fail_under = 90
@@ -52,7 +57,7 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["licence_gate"]
+known-first-party = ["licence_gate", "s3_livekit_contract"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101"]
