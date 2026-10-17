@@ -1,0 +1,10 @@
+# Gitleaks configuration (NFR-S3). Extends the default ruleset; every allowlist entry is exact
+# and explains why the match is not a secret. Never allowlist paths or broad patterns.
+title = "Visavox gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Deterministic, test-only HMAC key used to sign LiveKit tokens in unit tests; it never grants access to any system."
+regexes = ['''test-secret-0123456789-abcdefghijklmnop''']

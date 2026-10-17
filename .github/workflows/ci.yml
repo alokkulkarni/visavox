@@ -26,7 +26,7 @@ jobs:
       - run: uv sync --all-packages --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy tools/licence_gate/src
+      - run: uv run mypy tools/licence_gate/src spikes/s3_livekit_contract/src
       - run: make test
 
   licence-gate:
@@ -65,6 +65,19 @@ jobs:
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Gitleaks findings as annotations (redacted)
+        if: failure()
+        run: |
+          [ -f results.sarif ] || exit 0
+          python3 - <<'PY'
+          import json
+          for run in json.load(open("results.sarif")).get("runs", []):
+              for r in run.get("results", []):
+                  loc = r["locations"][0]["physicalLocation"]
+                  commit = r.get("partialFingerprints", {}).get("commitSha", "")[:7]
+                  print(f"::error file={loc['artifactLocation']['uri']},line={loc['region']['startLine']},"
+                        f"title={r.get('ruleId')}::secret-like value in commit {commit}; remove it or add an exact allowlist entry to .gitleaks.toml")
+          PY
       - name: Trivy filesystem scan (high and critical block)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -79,3 +92,54 @@ jobs:
           path: .
           format: spdx-json
           artifact-name: sbom.spdx.json
+
+  contract:
+    name: contract · LiveKit avatar (RT-06, LK-01, LK-04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.12"
+      - name: Start self-hosted LiveKit server (dev mode)
+        run: |
+          docker run -d --name livekit --network host livekit/livekit-server:v1.13.10 --dev --bind 0.0.0.0
+          for i in $(seq 1 60); do curl -sf http://localhost:7880 >/dev/null && break; sleep 1; done
+          curl -sf http://localhost:7880 && echo " LiveKit up"
+          docker logs livekit 2>&1 | tail -5
+      - run: uv sync --all-packages --locked
+      - name: Unit and contract tests with coverage
+        env:
+          LIVEKIT_URL: ws://localhost:7880
+          S3_RESULTS_PATH: s3-results.jsonl
+          CONTRACT_REPEAT: "1"  # raise temporarily to reproduce timing issues
+        run: |
+          status=0
+          for i in $(seq 1 "$CONTRACT_REPEAT"); do
+            make test-contract PYTEST_ARGS="--junitxml=contract-junit-$i.xml" || status=1
+          done
+          exit $status
+      - name: Test failures as annotations
+        if: failure()
+        run: |
+          ls contract-junit-*.xml >/dev/null 2>&1 || exit 0
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+          for report in sorted(glob.glob("contract-junit-*.xml")):
+            for case in ET.parse(report).iter("testcase"):
+              for kind in ("failure", "error"):
+                  for node in case.findall(kind):
+                      text = " ".join(((node.get("message") or "") + " " + (node.text or "")).split())[-900:]
+                      print(f"::error title={report} {kind}: {case.get('classname')}.{case.get('name')}::{text}")
+          PY
+      - name: Publish S3 measurements as annotations
+        if: always()
+        run: |
+          if [ -f s3-results.jsonl ]; then
+            while read -r line; do echo "::notice title=S3 measurement::$line"; done < s3-results.jsonl
+          fi
+      - name: LiveKit server log tail
+        if: failure()
+        run: docker logs livekit 2>&1 | tail -40

@@ -1,4 +1,6 @@
 # Visavox developer commands (CLAUDE.md). Python via uv.
+PYTEST_ARGS ?=
+
 .PHONY: setup lint typecheck test test-contract test-media security licence-check ci
 
 setup:
@@ -9,15 +11,16 @@ lint:
 	uv run ruff format --check .
 
 typecheck:
-	uv run mypy tools/licence_gate/src
+	uv run mypy tools/licence_gate/src spikes/s3_livekit_contract/src
 
 test:
 	uv run pytest -m "not contract and not media and not e2e and not load" --cov --cov-report=term-missing
 
-# pytest exits 5 when no tests are collected; an empty suite is not a failure yet.
+# Needs a LiveKit server: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET (defaults: ws://localhost:7880, devkey, secret).
 test-contract:
-	uv run pytest -m contract; status=$$?; [ $$status -eq 0 ] || [ $$status -eq 5 ]
+	uv run pytest spikes tests/contract -m "not media and not e2e and not load" --cov=spikes --cov-report=term-missing --cov-fail-under=90 $(PYTEST_ARGS)
 
+# pytest exits 5 when no tests are collected; an empty suite is not a failure yet.
 test-media:
 	uv run pytest -m media; status=$$?; [ $$status -eq 0 ] || [ $$status -eq 5 ]
 
