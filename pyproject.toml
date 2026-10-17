@@ -1,0 +1,58 @@
+[project]
+name = "visavox-workspace"
+version = "0.0.0"
+description = "Visavox monorepo workspace root (not a distributable package)"
+requires-python = ">=3.12,<3.13"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["tools/*"]
+
+[tool.uv.sources]
+licence-gate = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "licence-gate",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "types-PyYAML>=6.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tools", "services", "tests"]
+markers = [
+    "contract: API, LiveKit avatar contract and Connect event contract tests",
+    "media: audio/video quality harness tests (GPU)",
+    "e2e: end-to-end tests against deployed environments",
+    "load: load and capacity tests",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["tools"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+exclude_also = ["if __name__ == .__main__.:"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
