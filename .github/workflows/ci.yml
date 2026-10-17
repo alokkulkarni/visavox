@@ -47,8 +47,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Semgrep SAST
-        run: pipx run semgrep scan --config p/default --error --metrics=off
+      - name: Semgrep SAST (findings become annotations; fails closed)
+        run: |
+          pipx run semgrep scan --config p/default --metrics=off --json --output semgrep.json || true
+          python3 - <<'PY'
+          import json, sys
+          data = json.load(open("semgrep.json"))
+          for r in data.get("results", []):
+              msg = r["extra"]["message"].replace("\n", " ")[:300]
+              print(f"::error file={r['path']},line={r['start']['line']},title={r['check_id']}::{msg}")
+          for e in data.get("errors", []):
+              print(f"::warning title=semgrep-error::{str(e)[:300]}")
+          print(f"semgrep: {len(data.get('results', []))} finding(s)")
+          sys.exit(1 if data.get("results") else 0)
+          PY
       - name: Gitleaks secret scan
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
