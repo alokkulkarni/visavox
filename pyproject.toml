@@ -6,6 +6,8 @@ requires-python = ">=3.12,<3.13"
 
 [tool.uv]
 package = false
+# Supply-chain cooldown: ignore package versions published in the last 7 days (NFR-S3).
+exclude-newer = "7 days"
 
 [tool.uv.workspace]
 members = ["tools/*"]
