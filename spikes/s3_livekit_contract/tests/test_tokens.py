@@ -1,4 +1,4 @@
-"""Avatar worker tokens: short-lived, one room, kind=agent, publishing on behalf of the agent (LK-04, RT-06)."""
+"""Avatar tokens: short-lived, one room, kind=agent, publishing on behalf of the agent (LK-04, RT-06)."""
 
 from __future__ import annotations
 
@@ -36,10 +36,12 @@ def payload(token: str) -> dict[str, Any]:
 
 
 def test_token_identifies_avatar_as_agent_publishing_on_behalf_of_the_agent() -> None:
-    claims = api.TokenVerifier(KEY, SECRET).verify(make())
+    token = make()
+    claims = api.TokenVerifier(KEY, SECRET).verify(token)  # signature check
     assert claims.identity == "avatar-1"
-    assert claims.kind == "agent"
     assert claims.attributes == {PUBLISH_ON_BEHALF_ATTRIBUTE: "agent-1"}
+    # livekit-api 1.2.1's TokenVerifier does not parse `kind`, so read it from the verified payload.
+    assert payload(token)["kind"] == "agent"
 
 
 def test_token_is_scoped_to_one_room_without_admin_rights() -> None:
@@ -57,7 +59,7 @@ def test_token_is_scoped_to_one_room_without_admin_rights() -> None:
 
 def test_default_lifetime_is_the_maximum_of_ten_minutes() -> None:
     claims = payload(make())
-    assert MAX_TTL == timedelta(minutes=10)
+    assert timedelta(minutes=10) == MAX_TTL
     assert claims["exp"] - claims["nbf"] == 600
 
 
