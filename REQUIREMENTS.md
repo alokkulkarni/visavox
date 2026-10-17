@@ -32,6 +32,7 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 | D-06 | First release | All three modes in Release 1 (sequenced on one shared engine, see `SDD.md` §12) |
 | D-07 | Footprint | Multi-region; tenant chooses data region; 200+ concurrent live sessions |
 | D-08 | Product / repo | Visavox, `alokkulkarni/visavox` |
+| D-09 | Connect pattern A mechanism | **Open — owner decides at freeze.** Recommended: avatar tile in the customer's call client via the Visavox SDK (supported APIs). Alternative: headless virtual-agent workaround (undocumented APIs). |
 
 ## 3. Actors
 
@@ -142,21 +143,22 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 
 | ID | Pri | Requirement | Acceptance criteria |
 |---|---|---|---|
-| CNA-01 | MUST | When an end customer starts a Connect web or in-app video contact routed by the tenant's flow, a Visavox avatar becomes the agent-side video and audio of that contact. | AC: e2e test in a Visavox-owned Connect test instance: customer sees and hears the avatar. |
+| CNA-01 | MUST | When an end customer starts a Connect web or in-app video contact routed by the tenant's flow, the customer sees and hears the Visavox avatar in the agent's video position during the self-service stage. Mechanism per decision D-09 (`SDD.md` §8.2). | AC: e2e test in a Visavox-owned Connect test instance: customer sees and hears the avatar with A/V sync per NFR-Q2. |
+| CNA-06 | MUST | The avatar's speech on a Connect contact can come from Connect's own bot (`connect_bot`) or from the Visavox AI agent as an A2A collaborator (`visavox_a2a`). | AC: e2e tests for both brains; `visavox_a2a` subject to S2 confirming A2A on WebRTC contacts. |
 | CNA-02 | MUST | The avatar can escalate the same contact to a human agent queue, passing context (summary, intent, transcript link) as contact attributes; the human then appears on video as normal. | AC: e2e escalation test; attributes visible in agent workspace. |
 | CNA-03 | MUST | Tenant onboarding for Connect is self-service: a CloudFormation template creates a least-privilege cross-account role and any flow modules/Lambdas in the tenant's AWS account. | AC: template deploys cleanly in a fresh account; no long-lived keys exchanged. |
 | CNA-04 | MUST | Contact ID, avatar session ID and Connect instance ID are correlated in logs, events and transcripts. | AC: trace query returns the full path for a test contact. |
 | CNA-05 | MUST | Human-voice drive is supported on Connect video contacts: the human agent's voice drives the avatar instead of their camera. | AC: e2e test with a test agent. |
 
-The integration mechanism for CNA is decided in `SDD.md` §8.1 after the feasibility spike (DAG node S2); acceptance criteria above are mechanism-neutral.
+Research on 2026-10-17 found no supported way for a bot to be the agent-side participant of a Connect WebRTC contact (`SDD.md` §8.1). The recommended mechanism is the Visavox web SDK "avatar tile" in the customer's call client; the alternative is a headless virtual-agent workaround. The owner chooses at freeze (D-09).
 
 ### 6.7 Amazon Connect pattern B — avatar panel beside Connect chat or voice (CNB)
 
 | ID | Pri | Requirement | Acceptance criteria |
 |---|---|---|---|
-| CNB-01 | MUST | A drop-in web component renders the avatar video panel next to the tenant's Connect chat or voice experience. | AC: works embedded with the Connect hosted communications widget and with a custom amazon-connect-chatjs UI. |
+| CNB-01 | MUST | A drop-in web component renders the avatar video panel next to the tenant's Connect chat or voice experience. | AC: works as an Amazon Connect Touchpoint modality component (side-by-side layout) and with a custom amazon-connect-chatjs UI. The hosted communications widget cannot host custom panels and is not supported. |
 | CNB-02 | MUST | For **chat** contacts, every bot or agent message is spoken by the avatar with lip-sync, in order, with the text still shown. | AC: e2e: 20-turn chat; every message spoken; no reordering. |
-| CNB-03 | MUST | For **voice** self-service contacts, the customer hears exactly one voice: the avatar's audio is the bot's audio (no double playback). | AC: e2e test asserts single audio source. |
+| CNB-03 | MUST | For **web (WebRTC) voice** self-service contacts, the customer hears exactly one voice: the avatar's synchronised audio replaces the bot's direct audio (no double playback). PSTN-only calls have no screen and are out of scope. | AC: e2e test asserts single audio source. |
 | CNB-04 | MUST | When the contact transfers to a human, the panel switches to a configurable state (hide, idle avatar, or human-voice avatar if consented). | AC: e2e transfer test. |
 
 ### 6.8 LiveKit (LK)

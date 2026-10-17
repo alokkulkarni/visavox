@@ -190,7 +190,41 @@ A custom `AudioReceiver` in the avatar worker subscribes to the human agent's mi
 
 ## 8. Amazon Connect integration
 
-*Pending the Connect research results; filled before freeze.*
+### 8.1 What Connect supports today (research 2026-10-17)
+
+| Finding | Consequence |
+|---|---|
+| In-app/web/video calling uses `StartWebRTCContact` → Amazon Chime SDK meeting + attendee; customer clients are the hosted widget, the new **Touchpoint** SDK (MIT) or a custom Chime client. Available in us-east-1, eu-west-2, eu-central-1. | All three launch cells can serve Connect tenants in-region. |
+| `CreateParticipant` allows only `CUSTOM_BOT` (chat only) and `CUSTOMER` (WebRTC, **only after a human agent is connected**). Chime media pipelines cannot inject media and need the meeting's own account. | **No supported way for a bot or avatar to be the agent-side video** of a Connect WebRTC contact. |
+| A headless Connect "virtual agent" (custom CCP in headless Chrome) can send video via the documented Chime `startVideoInput(MediaStream)`, but replacing its **audio** relies on undocumented connect-rtc-js internals; one headless session per concurrent call; AWS service-terms position unconfirmed. | Agent-side avatar is possible only as a **workaround** — not acceptable for a production SaaS without AWS confirmation. |
+| **A2A collaboration** (GA 2026-09-23): an external agent receives caller audio and returns 16-bit PCM (8/16/24 kHz) over `wss://`, with barge-in and `ESCALATE`/`COMPLETE` events. Voice contacts, Connect Customer tier, Nova Sonic locale, sole collaborator. WebRTC coverage unverified. | Official way for the **Visavox agent to be the brain** of a Connect contact (audio only). |
+| Chat AI-agent responses stream incrementally (`MESSAGE_STREAMING`, ChatJS chunk metadata); Lex/third-party bots deliver full messages. | Pattern B chat: Visavox voices every message with exact lip-sync. |
+| The hosted communications widget cannot host a custom panel; **Touchpoint** supports custom modality components and a side-by-side layout. | Pattern B ships as a Touchpoint modality component and a ChatJS-compatible web component. |
+| Agent-side voice uses the softphone while video uses Chime. | Human-voice avatars on Connect risk audio leading video; mitigation in §8.4. |
+
+### 8.2 Pattern A — avatar on a Connect video contact (recommended mechanism, pending decision D-09)
+
+**Supported path ("avatar tile"):** the customer's video-call client embeds the Visavox web SDK alongside Touchpoint or a custom Chime client.
+1. Customer starts a Connect web/in-app video contact; the tenant's flow enters the self-service stage and invokes the Visavox Connect Lambda (deployed by CA3) with `ContactId`.
+2. Visavox creates an avatar session in the tenant's cell bound to that contact and returns a short-lived join token through the tenant backend to the client.
+3. The client joins the Visavox LiveKit room as a viewer and shows the avatar **in the agent's video tile**; during this stage it mutes Connect's direct bot audio and plays the avatar's synchronised A/V instead [CNB-03 principle: one voice].
+4. **Brain options** (per tenant agent config):
+   - `connect_bot` — Connect's own AI agent or Lex speaks; the client taps the meeting audio (`getCurrentMeetingAudioStream()`), publishes it to the room, and the avatar worker lip-syncs it (external-audio drive). Works with any Connect bot; adds ~300 ms.
+   - `visavox_a2a` — the Visavox agent runtime is the A2A collaborator: it receives caller audio from Connect, returns its TTS audio to Connect (for recording and analytics) **and** to the avatar worker (for the synced tile). Subject to A2A WebRTC coverage (S2).
+5. On escalation (`ESCALATE`, intent, or flow branch), the flow transfers to a queue with context attributes [CNA-02]; when the human accepts, the client removes the avatar tile and shows the human's Chime video on the **same contact**.
+
+**Workaround path ("virtual agent"), not in R1 unless D-09 says otherwise:** a pool of headless Connect agent users per tenant, each running a custom CCP that sends the avatar's video via `startVideoInput` and its audio via the undocumented media-stream replacement. It works with any customer client, but it depends on undocumented APIs, consumes one agent user per concurrent call, and its AWS service-terms position must be confirmed in writing first.
+
+### 8.3 Pattern B — avatar panel beside Connect chat or voice [CNB-01..04]
+- **Chat:** the Visavox web component (Touchpoint modality component or ChatJS-compatible element) subscribes to the contact's messages, assembles streamed chunks into sentences, and sends them to the session; the avatar speaks them with Visavox TTS, so lip-sync is exact. Text stays visible [CNB-02].
+- **Web voice:** as `connect_bot` above — tap meeting audio, lip-sync it, play one synchronised stream, mute the direct audio [CNB-03]. PSTN-only calls have no screen and are out of scope for avatars.
+- **Transfer to human:** the panel switches to the tenant-configured state [CNB-04].
+
+### 8.4 Human-voice drive on Connect [CNA-05]
+A Visavox **agent-side extension** for a custom CCP / agent workspace app captures the human agent's microphone, sends it to the avatar worker over LiveKit, and feeds the returned avatar video into Chime with `startVideoInput(MediaStream)` (documented). Because the agent's voice reaches the customer via the softphone path, video will trail audio by the render latency. When the customer uses the Visavox SDK, the SDK delays agent audio playout to re-align; S2 measures whether NFR-Q2 holds without it.
+
+### 8.5 Tenant onboarding [CNA-03]
+A CloudFormation stack in the tenant's account creates: a cross-account IAM role with external ID (read contact attributes, update contact attributes, describe instance); the Visavox Connect Lambda and flow module; optional A2A collaborator registration. No long-lived keys are exchanged.
 
 ## 9. Offline render pipeline [VID-01..06, NFR-L6]
 `POST /v1/renders` → moderation of script [VID-05, CMP-11] → TTS (full script, offline quality) → forced alignment for captions [VID-02] → offline avatar model in chunks on GPU (InfiniteTalk default) → upscale to target resolution → composite background and labels [CMP-07] → Video Seal + AudioSeal → mux MP4 → C2PA 2.4 manifest with AI-disclosure assertion and latent-disclosure fields, signed by the cell's signing key [CMP-08] → S3 in region → webhook with signed URL. Jobs are chunked and resumable; a 10-minute script fans out across GPUs to meet ≤ 2× real time.
@@ -259,7 +293,7 @@ For every node: **QA-Tester-Agent** writes failing tests from the requirement ID
 | LK4 | Human-voice drive | LK1 | RT-05 |
 | CB1 | Connect pattern B: web component, chat drive | LK2, S2 | CNB-01, CNB-02, CNB-04 |
 | CB2 | Connect pattern B: voice single-audio path | CB1 | CNB-03 |
-| CA1 | Connect pattern A: avatar on Connect video contact | LK2, LK4, S2 | CNA-01, CNA-05 |
+| CA1 | Connect pattern A: avatar tile, `connect_bot` and `visavox_a2a` brains, agent-side extension | LK2, LK4, S2 | CNA-01, CNA-05, CNA-06 |
 | CA2 | Connect escalation and context hand-off | CA1 | CNA-02, CNA-04 |
 | CA3 | Tenant Connect onboarding (CloudFormation) | C1, S2 | CNA-03 |
 | O1 | Offline render pipeline | V1, A2, S1 | VID-01, VID-03, VID-04 |
@@ -316,11 +350,11 @@ Trace context propagates from API through session service, agent runtime, avatar
 | R-03 | Licence drift (several TTS licences changed in 2025–26) | Pinned, archived licences; quarterly registry review |
 | R-04 | Training-data provenance of permissively licensed weights is unknown | Counsel review G1; prefer models with documented data |
 | R-05 | LiveKit avatar worker API is Python-only and its reference example was removed | Contract tests and version guard; upstream tracking |
-| R-06 | Connect integration constraints (pattern A) | Spike S2 before CA1 |
+| R-06 | Connect has no supported agent-side bot video; A2A coverage of WebRTC contacts unverified; softphone/Chime A/V skew for human-voice avatars | D-09 decision; spike S2 before CA1; written AWS confirmation before any virtual-agent workaround |
 | Q-01..08 | Counsel questions: special-category status of generative models; employee consent; SB 942 / TAKE IT DOWN coverage; who labels Art 50(4) deepfakes; whether model updates reset the AI Act grace period; SB 1001 and voice; WebRTC marking sufficiency; EU→US transfers if the DPF falls | G1 |
 
 ## 17. Architecture decision records (to be written in `docs/adr/` at freeze)
 ADR-001 AWS regional cells with EKS · ADR-002 LiveKit as internal media backbone · ADR-003 Python backend, TypeScript front end · ADR-004 Aurora PostgreSQL with RLS · ADR-005 Licence registry gate · ADR-006 Model selection (after S1) · ADR-007 Connect integration mechanism (after S2) · ADR-008 Consent and liveness components (after S4).
 
 ## Appendix A — Research sources (2026-10-17)
-See §8 and §10 tables; full source lists are attached to the spec PR description.
+Primary sources for every external claim in §3.3, §6.1, §7.3, §8.1 and §10.1 are listed in [`docs/research/sources-2026-10-17.md`](docs/research/sources-2026-10-17.md).
