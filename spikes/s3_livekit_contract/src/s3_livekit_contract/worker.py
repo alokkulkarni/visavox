@@ -20,8 +20,10 @@ class AvatarWorker:
     runner: AvatarRunner
 
     async def aclose(self) -> None:
-        await self.runner.aclose()
-        await self.room.disconnect()
+        try:
+            await self.runner.aclose()
+        finally:
+            await self.room.disconnect()
 
 
 async def start_avatar_worker(
