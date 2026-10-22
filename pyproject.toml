@@ -46,6 +46,8 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = ["tools", "spikes"]
+# Measure production code only: test modules are ~100 % covered and would inflate the gate (rule 12).
+omit = ["*/tests/*"]
 
 [tool.coverage.report]
 fail_under = 90
