@@ -89,16 +89,21 @@ async def test_first_speaking_frame_reaches_the_viewer_quickly(session: Contract
 
 
 async def test_clear_buffer_from_an_unexpected_identity_is_rejected(session: ContractSession) -> None:
-    """LK-04: only the paired agent may control the avatar."""
+    """LK-04: only the paired agent may control the avatar; a foreign interrupt leaves playback alone."""
+    started = asyncio.Event()
+    session.audio_out.on("playback_started", lambda _ev: started.set())
     rogue = await connect(f"rogue-{uuid.uuid4().hex[:8]}", session.room_name)
     try:
         await wait_for(lambda: session.avatar_identity in rogue.remote_participants)
-        try:
-            response = await rogue.local_participant.perform_rpc(
-                destination_identity=session.avatar_identity, method="lk.clear_buffer", payload=""
-            )
-        except rtc.RpcError:
-            response = "rpc-error"
-        assert response != "ok"
+        await send_segment(session.audio_out, 1.5)
+        await asyncio.wait_for(started.wait(), timeout=15.0)
+        response = await rogue.local_participant.perform_rpc(
+            destination_identity=session.avatar_identity, method="lk.clear_buffer", payload=""
+        )
+        event = await asyncio.wait_for(session.audio_out.wait_for_playout(), timeout=15.0)
     finally:
         await rogue.disconnect()
+
+    assert response == "reject"
+    assert event.interrupted is False
+    assert event.playback_position == pytest.approx(1.5, abs=0.15)
