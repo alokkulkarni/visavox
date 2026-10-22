@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | DAG node | S1 (parents: F0) |
-| Requirements | NFR-L3, NFR-L6, NFR-Q1..Q5, NFR-O3, NFR-S6, RT-02, AVA-01, AVA-02, VID-01, VOI-01, VOI-02, RT-04 |
+| Requirements | NFR-L3, NFR-L6, NFR-Q1..Q6, RT-11, NFR-O3, NFR-S6, RT-02, AVA-01, AVA-02, VID-01, VOI-01, VOI-02, RT-04 |
 | Output | ADR-006 (model selection), approved entries in `models/registry.yaml`, `docs/spikes/S1-results.md`, benchmark harness in `tools/bench` |
 | Timebox | 10 working days once GPU access exists |
 | Status | Planned — **blocked on GPU infrastructure (see §6)** |
@@ -24,7 +24,8 @@
    - language coverage (A-06).
 5. **STT.** For Nemotron 3.5 Streaming and Parakeet v3, measure word error rate on UK and US accents and finalisation latency.
 6. **Capacity and cost.** How many live streams fit per GPU class (g6 L4, g6e L40S, g7e RTX PRO 6000, p5 H100)? What is the GPU cost per live session-minute and per rendered minute (NFR-O3)?
-7. **Licences.** Does every chosen artefact pass `licence-gate --scan` after download? Record its SHA-256 and archive its licence texts.
+7. **Head motion (RT-11, NFR-Q6, spec v1.1 #21).** For each real-time face candidate, score speech-driven head motion: the Beat Alignment Score of head-motion peaks against speech onsets, and head-pose variation (std of yaw, pitch and roll) against the band measured on real speakers. Gestures and upper-body framing are out of S1 scope; they belong to S5.
+8. **Licences.** Does every chosen artefact pass `licence-gate --scan` after download? Record its SHA-256 and archive its licence texts.
 
 ## 2. Method
 - **Isolation.** Each candidate is installed in its own container from pinned commits. Its downloaded weights go to a separate directory, which `licence-gate --scan` checks before first use.
