@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.1 (proposed) |
+| Version | 1.1 |
 | Date | 2026-10-22 |
-| Status | v1.0 **FROZEN 2026-10-17** (approved by the owner in PR #1). v1.1 (issue #14: head motion, gestures, local-first) is frozen when the owner approves and merges its PR |
+| Status | **FROZEN 2026-10-22** (v1.1, approved by the owner in PR #21: head motion, gestures, local-first). v1.0 was frozen 2026-10-17 in PR #1 |
 | Requirements | [`REQUIREMENTS.md`](REQUIREMENTS.md) v1.1 |
 | Rules | [`CLAUDE.md`](CLAUDE.md) |
 
