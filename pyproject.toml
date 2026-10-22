@@ -14,11 +14,13 @@ members = ["tools/*", "spikes/*"]
 
 [tool.uv.sources]
 licence-gate = { workspace = true }
+local-cell = { workspace = true }
 s3-livekit-contract = { workspace = true }
 
 [dependency-groups]
 dev = [
     "licence-gate",
+    "local-cell",
     "s3-livekit-contract",
     "pytest-asyncio>=1.0",
     "pytest-timeout>=2.3",
@@ -27,6 +29,9 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "types-PyYAML>=6.0",
+    # Local cell smoke tests (NFR-O5): AWS stand-ins and PostgreSQL.
+    "asyncpg>=0.30",
+    "boto3>=1.35",
 ]
 
 [tool.pytest.ini_options]
@@ -41,6 +46,7 @@ markers = [
     "media: audio/video quality harness tests (GPU)",
     "e2e: end-to-end tests against deployed environments",
     "load: load and capacity tests",
+    "local: smoke tests against the running local Docker cell (make up)",
 ]
 
 [tool.coverage.run]
@@ -62,7 +68,7 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["licence_gate", "s3_livekit_contract"]
+known-first-party = ["licence_gate", "local_cell", "s3_livekit_contract"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101", "S105", "S106"]  # asserts and test-only credentials
