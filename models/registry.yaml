@@ -33,7 +33,36 @@ models:
     commercial_use: true
     conditions: Pro variant only; the Lite variant adds the LTX VAE under Open-RAIL-M use restrictions.
     components: [wan-vae, wav2vec2, mediapipe-face]
-    requirements: [RT-02, AVA-01, NFR-L3, NFR-Q1]
+    requirements: [RT-02, RT-11, AVA-01, NFR-L3, NFR-Q1, NFR-Q6]
+
+  - name: soulx-flashhead-lite
+    purpose: realtime_photo_avatar
+    status: candidate
+    source_url: https://huggingface.co/Soul-AILab/SoulX-FlashHead-1_3B
+    code_licence: Apache-2.0
+    weights_licence: OpenRAIL-M
+    commercial_use: true
+    conditions: >-
+      Density profile for speech-driven head motion (about 3 streams at 25 fps on one RTX 4090, author figures).
+      The DiT is Apache-2.0; the bundled LTX-0.9 VAE is OpenRAIL-M, whose use restrictions must flow into the
+      acceptable-use policy. Portrait only, no hands. Speed re-measured in S1.
+    components: [ltx-vae-0.9, wav2vec2, mediapipe-face]
+    requirements: [RT-02, RT-11, NFR-L3, NFR-Q6]
+
+  - name: liveavatar
+    purpose: realtime_upper_body
+    status: candidate
+    source_url: https://github.com/Alibaba-Quark/LiveAvatar
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    conditions: >-
+      Research preview: streaming half-body generation on Wan2.2-S2V (LoRA). About 5 fps on one GPU and
+      1.21 s to first frame on 5xH100 (author figures), so it is a challenger for RT-12, not a live default.
+      requirements.txt installs a banned face-analysis package used on the multi-speaker path; strip it and
+      prove with licence-gate --scan before any use (S5).
+    components: [wan2.2-s2v-14b]
+    requirements: [RT-12, NFR-L3, NFR-Q7]
 
   - name: musetalk-1.5
     purpose: realtime_studio_avatar
@@ -58,7 +87,7 @@ models:
     weights_licence: Apache-2.0
     commercial_use: true
     components: [wan2.1-i2v-14b, chinese-wav2vec2-base]
-    requirements: [VID-01, NFR-L6]
+    requirements: [VID-01, VID-07, NFR-L6, NFR-Q7]
 
   - name: wan2.2-s2v-14b
     purpose: offline_render
@@ -67,7 +96,8 @@ models:
     code_licence: Apache-2.0
     weights_licence: Apache-2.0
     commercial_use: true
-    requirements: [VID-01, NFR-L6]
+    conditions: Optional pose input uses DWPose-format keypoints; never feed OpenPose weights. Hand quality published (HKC/HKV).
+    requirements: [VID-01, VID-07, NFR-L6, NFR-Q7]
 
   # --- Voice -----------------------------------------------------------------
   - name: qwen3-tts
@@ -185,6 +215,27 @@ models:
     commercial_use: true
     conditions: Model card states it was trained on commercially and publicly available data; reconfirm in S4.
     requirements: [CON-02, NFR-S5]
+
+  # --- Body and hand pose (QC gate, gesture library, NFR-Q7 metrics) ------------
+  - name: dwpose
+    purpose: pose_estimation
+    status: candidate
+    source_url: https://github.com/IDEA-Research/DWPose
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    conditions: Training-data terms (COCO-WholeBody, UBody) are unverified; confirm in S5 before approval.
+    requirements: [AVA-03, RT-12, NFR-Q7]
+
+  - name: mediapipe-hand-landmarker
+    purpose: pose_estimation
+    status: candidate
+    source_url: https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker
+    code_licence: Apache-2.0
+    weights_licence: Apache-2.0
+    commercial_use: true
+    conditions: Weights licence seen only through redistributors; confirm against Google's model card in S5.
+    requirements: [AVA-03, NFR-Q7]
 
   # --- Watermarking ------------------------------------------------------------
   - name: videoseal

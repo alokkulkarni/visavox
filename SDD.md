@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.0 |
-| Date | 2026-10-17 |
-| Status | **FROZEN 2026-10-17** (approved by the owner in PR #1) |
-| Requirements | [`REQUIREMENTS.md`](REQUIREMENTS.md) v1.0 |
+| Version | 1.1 (proposed) |
+| Date | 2026-10-22 |
+| Status | v1.0 **FROZEN 2026-10-17** (approved by the owner in PR #1). v1.1 (issue #14: head motion, gestures, local-first) is frozen when the owner approves and merges its PR |
+| Requirements | [`REQUIREMENTS.md`](REQUIREMENTS.md) v1.1 |
 | Rules | [`CLAUDE.md`](CLAUDE.md) |
 
 This document says **how** Visavox meets `REQUIREMENTS.md`. Requirement IDs in brackets (e.g. [RT-03]) show where each design element comes from; §13 traces every requirement group to design sections and delivery nodes. Research behind the design decisions was done on 2026-10-17 and is cited in §10 and Appendix A; every external claim marked *(verify in Sx)* is confirmed or overturned by the named spike before dependent build work starts.
@@ -120,13 +120,16 @@ London has no g6e or g7, so the GPU abstraction must not assume one instance fam
 
 ### 6.1 Model stack (initial candidates; final choice by spike S1)
 
-All candidates below have commercially permissive code **and** weight licences as checked on 2026-10-17, provided the listed swaps are made. InsightFace models, CelebAMask-HQ-trained face parsers, dlib landmarks, CodeFormer and Basel Face Model components are **banned** (non-commercial) and the CI licence gate scans weight files for them.
+All candidates below have commercially permissive code **and** weight licences as checked on 2026-10-17, provided the listed swaps are made. InsightFace models, CelebAMask-HQ-trained face parsers, dlib landmarks, CodeFormer and Basel Face Model components are **banned** (non-commercial) and the CI licence gate scans weight files for them. v1.1 adds SMPL/SMPL-H/SMPL-X body models, AMASS motion data and OpenPose weights (all non-commercial by default), which rules out every released audio-to-gesture generator (EMAGE, TalkSHOW, DiffSHEG, SynTalker) as shipped.
 
 | Function | Primary candidate | Challenger | Licence notes |
 |---|---|---|---|
 | Real-time Photo avatar | Ditto (Apache-2.0) with InsightFace detector/landmarks replaced by MediaPipe or YuNet | SoulX-FlashHead 1.3B Pro (Apache-2.0); Lite for density (adds LTX VAE, Open-RAIL-M use restrictions) | Ditto bundle ships InsightFace files that must be removed |
 | Real-time Studio avatar | MuseTalk 1.5 (MIT) on tenant-recorded loops, face parser replaced; retrain mouth region at 512 px | Ditto driven from best frame of the video | MuseTalk's default parser is CelebAMask-HQ-trained (non-commercial) |
-| Offline render | InfiniteTalk (Apache-2.0) + licence-checked upscaler to 1080p | Wan2.2-S2V-14B (Apache-2.0) | 480/720p native output |
+| Offline render | InfiniteTalk (Apache-2.0) + licence-checked upscaler to 1080p | Wan2.2-S2V-14B (Apache-2.0) | 480/720p native output. For gestures (VID-07) S5 re-ranks on hand quality: Wan2.2-S2V publishes HKC 0.435 / HKV 0.142 and drives hands from audio; InfiniteTalk can take the Studio video as input *(verify in S5)* |
+| Speech-driven head motion (live) [RT-11] | Audio-driven head pose of the selected real-time face model (Ditto and SoulX-FlashHead both drive head pose from audio) | SoulX-FlashHead Lite for density (LTX VAE, OpenRAIL-M) | Scored on NFR-Q6 in S1 |
+| Live gestures, Studio avatars [RT-12] | **Visavox gesture planner** (§6.6): retrieval over the subject's own footage, keyed on DWPose keypoints and speech prosody, with the face model editing only the face | LiveAvatar (Alibaba Quark; Apache-2.0 code and weights; streaming half-body on Wan2.2-S2V) | LiveAvatar: about 5 fps on one GPU, 1.21 s to first frame on 5×H100, and its install pulls `insightface` (multi-speaker path), which must be removed. Prior gesture-reenactment code (TANGO) is CC BY-NC, so the planner is built in-house. Adobe patent US12347135B2 needs counsel review (G1) |
+| Pose and hand keypoints (QC, gesture indexing, metrics) | DWPose (Apache-2.0 code and weights) | RTMW (mmpose), MediaPipe Hand Landmarker | Training-data terms (COCO-WholeBody, UBody) *verify in S5*; OpenPose is non-commercial, so banned |
 | TTS + cloning | Qwen3-TTS (Apache-2.0) | Fun-CosyVoice3 (Apache-2.0); Chatterbox (MIT, built-in watermark) | F5-TTS, XTTS-v2, Fish, Spark are non-commercial — banned |
 | Stock voices | Kokoro-82M (Apache-2.0) | Qwen3-TTS preset voices | |
 | Streaming STT | NVIDIA Nemotron 3.5 ASR Streaming 0.6B (OpenMDW-1.1, 40 locales) | Parakeet-TDT-0.6B-v3 (CC-BY-4.0); Kyutai STT 1B | |
@@ -142,7 +145,7 @@ All candidates below have commercially permissive code **and** weight licences a
 1. **Upload** to a pre-signed S3 URL in the tenant's region; object tagged `biometric`.
 2. **QC gate** (CPU/GPU job): face count, size, pose, blur, exposure, occlusion; for video, presence continuity and lighting stability; typed failure reasons [AVA-03].
 3. **Consent wait:** pipeline pauses until `consent.status = verified` and scope covers requested uses [AVA-04].
-4. **Prepare:** Photo avatar — crop/align, identity and motion-source caches. Studio avatar — select clean frames, build idle/listening loops, fine-tune per-avatar weights where the chosen model supports it.
+4. **Prepare:** Photo avatar — crop/align, identity and motion-source caches; classify framing (headshot, or upper body with both hands) for VID-07. Studio avatar — select clean frames, build idle/listening loops, fine-tune per-avatar weights where the chosen model supports it, and build the **gesture library** (§6.6) [RT-12].
 5. **Evaluate:** lip-sync (LSE-C/D), identity similarity, artefact checks against S1 thresholds [NFR-Q3, NFR-Q4]; fail closes the version.
 6. **Publish version**; artefacts encrypted under the tenant biometric key; a signed **avatar manifest** lists artefact hashes and the consent token ID the engine must validate at load.
 
@@ -150,17 +153,39 @@ All candidates below have commercially permissive code **and** weight licences a
 - Each GPU worker process hosts **N session slots** (N from S1 capacity model) sharing loaded base models; per-avatar caches are loaded into a slot at session start.
 - **Audio in** (16 or 24 kHz PCM, 100 ms frames) → audio features → motion/lip latents → frames (target 720p, 25 fps; head-and-shoulders composited onto the configured background) → **Video Seal** watermark → LiveKit video track. Audio is watermarked with **AudioSeal** and delayed through `rtc.AVSynchronizer` so lips and sound line up within +45/−125 ms.
 - **Idle and listening states** generate low-amplitude motion (blinks, breathing, nods) whenever no speech audio is queued, so the track never freezes.
+- **Head motion and gestures** follow the speech [RT-11, RT-12]; see §6.6. Frames are upper-body by default (A-03); the interrupt path also returns the hands to rest.
 - **Interrupt:** `clear_buffer` drops queued audio and pending frames, cross-fades to the listening pose within one frame interval and reports the playback position [RT-03].
 - **Consent check at load:** the worker validates the consent token (signature, scope, expiry, not revoked) and subscribes to the revocation channel; revocation ends the session gracefully [CON-04].
 
 ### 6.4 Session placement and capacity [NFR-L1, NFR-A2]
 - The session service keeps a **warm pool** of free slots per avatar-model profile per cell. A start request claims a slot, loads the avatar caches and joins the room in ≤ 3 s.
 - Karpenter scales GPU node pools on slot utilisation (target 70 %), with a minimum warm floor per cell and scheduled pre-warming for tenant peak hours.
-- Capacity model and cost per session-minute are outputs of S1 [NFR-O3]. Planning figure until then: 2–3 concurrent live streams per 48–96 GB GPU, so 200 concurrent sessions need roughly 70–100 GPUs per cell. This is the largest cost driver and drives the pricing model.
+- Capacity model and cost per session-minute are outputs of S1 [NFR-O3]. Planning figure until then: 2–3 concurrent live streams per 48–96 GB GPU **for head-and-shoulders framing**, so 200 concurrent sessions need roughly 70–100 GPUs per cell. This is the largest cost driver and drives the pricing model.
+- Upper-body framing with gestures (v1.1) is **unmeasured**. S5 measures streams per GPU for gesture profiles; until then 70–100 GPUs per cell is a lower bound.
 
 ### 6.5 Voice [VOI-01..05]
 - TTS servers stream 24 kHz PCM over gRPC in ≤ 200 ms first-chunk; voice clones are stored as speaker embeddings/prompts encrypted under the biometric key and only loadable with a valid consent token.
 - Lexicon and SSML subset are applied before synthesis; all output is AudioSeal-watermarked at source (and Chatterbox Perth if that model is selected).
+
+### 6.6 Head motion and hand gestures [RT-11, RT-12, VID-07, NFR-Q6, NFR-Q7]
+**Why not one generative upper-body model live.** Research on 2026-10-22 (`docs/research/sources-2026-10-22.md`) found no released model with commercial-use code and weights that generates upper-body video with hands within NFR-L3 on one GPU:
+- every streaming model generates in blocks with autoregressive diffusion, with about 1.2 s to first frame even on 2–5 H100-class GPUs (LiveAvatar 1.21 s on 5×H100; StreamAvatar about 1.2 s on 2×H800, unreleased);
+- on one GPU the best released one runs at about 5 fps.
+
+So the design splits by avatar type and mode:
+
+| | Live | Rendered |
+|---|---|---|
+| Studio avatar | Face model (head motion, lips) + gesture planner over the subject's own footage | Offline upper-body model (Wan2.2-S2V or InfiniteTalk), or the planner's clips edited by InfiniteTalk |
+| Photo avatar | Face model head motion only (§4.2 of requirements) | Offline upper-body model when the photo shows both hands; head motion only for headshots |
+
+**Gesture library (built in A2).** The Studio video is cut into clips at rest poses. Each clip is indexed by body and hand keypoints (DWPose), speech prosody (energy, pitch, onset rate) and its rest-pose boundaries. Clips with hand artefacts or occlusion are dropped. The library is biometric data under the tenant biometric key and is deleted with the avatar [AVA-07].
+
+**Gesture planner (built in E1).** For each incoming speech segment the planner reads prosody from audio already queued in the engine and picks the next clip from a motion graph that matches its energy and onset rhythm, joining clips only at rest poses so seams blend. The face model renders the face and lips onto the planned frames. No extra model runs per frame, so the planner adds CPU work, not GPU time, and fits NFR-L3. On `clear_buffer` the planner cuts to the shortest path back to a rest pose and the transition starts within 300 ms [RT-12, RT-03]. Gesture intensity (AVA-05) scales clip selection; `off` holds the rest pose.
+
+**Offline.** Renders use the offline upper-body model selected in S5; the gesture settings condition clip or prompt selection, and the output passes NFR-Q7 before signing [VID-07].
+
+**Measurement.** The media harness adds Beat Alignment Score for head and hands, head-pose variation, and HKC/HKV from DWPose keypoints [NFR-Q6, NFR-Q7]. Bands are set from real speakers in the evaluation set during S5.
 
 ## 7. Real-time session flows
 
@@ -227,7 +252,7 @@ A Visavox **agent-side extension** for a custom CCP / agent workspace app captur
 A CloudFormation stack in the tenant's account creates: a cross-account IAM role with external ID (read contact attributes, update contact attributes, describe instance); the Visavox Connect Lambda and flow module; optional A2A collaborator registration. No long-lived keys are exchanged.
 
 ## 9. Offline render pipeline [VID-01..06, NFR-L6]
-`POST /v1/renders` → moderation of script [VID-05, CMP-11] → TTS (full script, offline quality) → forced alignment for captions [VID-02] → offline avatar model in chunks on GPU (InfiniteTalk default) → upscale to target resolution → composite background and labels [CMP-07] → Video Seal + AudioSeal → mux MP4 → C2PA 2.4 manifest with AI-disclosure assertion and latent-disclosure fields, signed by the cell's signing key [CMP-08] → S3 in region → webhook with signed URL. Jobs are chunked and resumable; a 10-minute script fans out across GPUs to meet ≤ 2× real time.
+`POST /v1/renders` → moderation of script [VID-05, CMP-11] → TTS (full script, offline quality) → forced alignment for captions [VID-02] → offline avatar model in chunks on GPU (InfiniteTalk default; the S5-selected upper-body model when the avatar has gestures [VID-07]) → upscale to target resolution → composite background and labels [CMP-07] → Video Seal + AudioSeal → mux MP4 → C2PA 2.4 manifest with AI-disclosure assertion and latent-disclosure fields, signed by the cell's signing key [CMP-08] → S3 in region → webhook with signed URL. Jobs are chunked and resumable; a 10-minute script fans out across GPUs to meet ≤ 2× real time.
 
 ## 10. Trust, safety and compliance design
 
@@ -272,19 +297,21 @@ For every node: **QA-Tester-Agent** writes failing tests from the requirement ID
 | ID | Node | Parents | Requirements |
 |---|---|---|---|
 | S1 | Spike: model bake-off on g6 / g7e / p5 — latency, fps, quality, streams per GPU, cost | F0 | NFR-L, NFR-Q, NFR-O3, NFR-S6 |
-| S2 | Spike: Connect pattern A and B feasibility in a Visavox test Connect instance | F0 | CNA, CNB |
+| S2 | Spike: Connect pattern A and B feasibility in a Visavox test Connect instance, driven from the local cell | F0, LC1 | CNA, CNB, NFR-O5 |
 | S3 | Spike: LiveKit avatar contract on self-hosted server and LiveKit Cloud | F0 | LK, RT-06 |
 | S4 | Spike: liveness, face and speaker verification selection and error rates | F0 | CON-02, NFR-S5 |
-| G1 | Legal counsel review of §10 and open questions (human) | — | CMP |
+| S5 | Spike: head motion and gestures — gesture-planner prototype on Studio footage, streaming upper-body models (LiveAvatar), offline hand quality, metrics harness (Beat Alignment, HKC/HKV), pose-model licence checks, streams per GPU for gesture profiles | F0 | RT-11, RT-12, VID-07, NFR-Q6, NFR-Q7, NFR-L3 |
+| LC1 | Local cell: Docker Compose stack, CPU stand-in avatar, NVIDIA GPU profile, authenticated tunnel to the Visavox test Connect instance | F0 | NFR-O5 |
+| G1 | Legal counsel review of §10, open questions and gesture-reenactment patent US12347135B2 (human) | — | CMP, RT-12 |
 | F0 | Monorepo, CI, licence registry gate, ADR template, test harness skeletons | — | NFR-S3, NFR-S6 |
 | F1 | Terraform cell + global modules, EKS, GPU node pools, data stores, LiveKit | F0 | NFR-O4, TEN-02 |
-| C1 | Tenancy, users, roles, API keys, quotas, audit chain | F1 | TEN-01..08 |
+| C1 | Tenancy, users, roles, API keys, quotas, audit chain | LC1 (F1 before cloud deployment) | TEN-01..08 |
 | C2 | Public API framework, OpenAPI, idempotency, webhooks | C1 | API-01, API-02 |
 | A1 | Upload + QC gate | C2, S1 | AVA-01..03 |
 | K1 | Consent service and capture page | C2, S4 | CON-01..06, CMP-01..04 |
-| A2 | Avatar build pipeline, versioning, deletion | A1, K1, S1 | AVA-04..08, CMP-13 |
+| A2 | Avatar build pipeline, versioning, deletion, gesture library | A1, K1, S1, S5 | AVA-04..08, RT-12, CMP-13 |
 | V1 | Voice service: stock, clone, lexicon, watermark | C2, K1, S1 | VOI-01..05 |
-| E1 | Real-time engine core | A2, S1 | RT-02, RT-03, NFR-L3, NFR-Q |
+| E1 | Real-time engine core, head motion, gesture planner | A2, S1, S5, G1 (patent) | RT-02, RT-03, RT-11, RT-12, NFR-L3, NFR-Q |
 | E2 | Session placement, warm pool, autoscaling | E1, F1 | NFR-L1, NFR-A2 |
 | R1 | Session API, events, transcripts, recording | C2, E2 | RT-01, RT-08..10 |
 | LK1 | Avatar worker LiveKit contract (external audio) | E1, S3 | RT-06, LK-01 |
@@ -296,7 +323,7 @@ For every node: **QA-Tester-Agent** writes failing tests from the requirement ID
 | CA1 | Connect pattern A: avatar tile, `connect_bot` and `visavox_a2a` brains, agent-side extension | LK2, LK4, S2 | CNA-01, CNA-05, CNA-06 |
 | CA2 | Connect escalation and context hand-off | CA1 | CNA-02, CNA-04 |
 | CA3 | Tenant Connect onboarding (CloudFormation) | C1, S2 | CNA-03 |
-| O1 | Offline render pipeline | V1, A2, S1 | VID-01, VID-03, VID-04 |
+| O1 | Offline render pipeline | V1, A2, S1, S5 | VID-01, VID-03, VID-04, VID-07 |
 | O2 | Captions, C2PA signing, labels | O1 | VID-02, VID-06, CMP-07, CMP-08 |
 | T1 | Trust & safety: moderation, takedown, detector, break-glass | C2, E1, O2 | TRU-01..05, CMP-09..12 |
 | B1 | Metering and Stripe export | R1, O1 | BIL-01..03 |
@@ -307,7 +334,7 @@ For every node: **QA-Tester-Agent** writes failing tests from the requirement ID
 
 ### 12.3 Release 1 sequencing (D-06)
 All three modes ship in Release 1; internal milestones de-risk them on the shared engine:
-- **R1-α:** F0–F1, S1–S4, C1–C2, A1–A2, K1, V1, E1–E2, R1, LK1–LK4 → LiveKit AI-agent, human-voice and external-audio modes in the UK cell.
+- **R1-α:** F0, LC1, F1, S1–S5, C1–C2, A1–A2, K1, V1, E1–E2, R1, LK1–LK4 → LiveKit AI-agent, human-voice and external-audio modes in the UK cell.
 - **R1-β:** CB1–CB2, O1–O2, T1, B1, U1, SDK1 → Connect pattern B and scripted rendering.
 - **R1-γ:** CA1–CA3 → Connect pattern A.
 - **GA:** M1, P1, G1 → three cells, hardening, counsel sign-off.
@@ -320,23 +347,29 @@ All three modes ship in Release 1; internal milestones de-risk them on the share
 | AVA | 5, 6.2 | A1, A2 |
 | VOI | 6.1, 6.5 | V1 |
 | CON, CMP-01..04 | 10.2 | K1, S4 |
-| RT | 6.3, 6.4, 7 | E1, E2, R1, LK1–LK4 |
+| RT | 6.3, 6.4, 6.6, 7 | S5, E1, E2, R1, LK1–LK4 |
 | CNA | 8 | S2, CA1–CA3 |
 | CNB | 8 | S2, CB1–CB2 |
 | LK | 7.3 | S3, LK1–LK3 |
-| VID | 9 | O1, O2 |
+| VID | 6.6, 9 | S5, O1, O2 |
 | API | 4, 7.1 | C2, U1, SDK1 |
 | TRU, CMP-05..15 | 10 | T1, O2, LK2, P1, G1 |
 | BIL | 4 | B1 |
-| NFR-L, NFR-Q | 6.3, 6.4, 7.2, 7.4, 9 | S1, E1, E2 |
+| NFR-L, NFR-Q | 6.3, 6.4, 6.6, 7.2, 7.4, 9 | S1, S5, E1, E2 |
 | NFR-A | 3, 5.2, 6.4 | F1, M1, P1 |
 | NFR-S | 5.2, 11 | F0, every node's Security gate, P1 |
-| NFR-O | 3.2, 6.4, 14 | F0, F1, B1 |
+| NFR-O | 3.2, 6.4, 14 | F0, LC1, F1, B1 |
 
 ## 14. Testing, CI/CD and environments
-- **TDD everywhere:** unit (pytest, vitest), contract (OpenAPI-generated, LiveKit avatar contract, Connect event schemas), integration (testcontainers: Postgres, Redis, LiveKit server), media quality harness (`tests/media`: A/V offset, fps, LSE-C/D, identity similarity, watermark detection), conversation tests (scripted multi-turn dialogues with golden assertions), e2e (Playwright + headless LiveKit clients + Visavox test Connect instance), load (k6 + synthetic WebRTC clients), isolation and residency suites.
+- **TDD everywhere:** unit (pytest, vitest), contract (OpenAPI-generated, LiveKit avatar contract, Connect event schemas), integration (testcontainers: Postgres, Redis, LiveKit server), media quality harness (`tests/media`: A/V offset, fps, LSE-C/D, identity similarity, head and gesture Beat Alignment, head-pose variation, HKC/HKV, watermark detection), conversation tests (scripted multi-turn dialogues with golden assertions), e2e (Playwright + headless LiveKit clients + Visavox test Connect instance), load (k6 + synthetic WebRTC clients), isolation and residency suites.
 - **CI gates (GitHub Actions):** lint, type check, unit, contract, Semgrep, gitleaks, Trivy, Syft SBOM, licence registry gate, Validator report; GPU-dependent suites run on a self-hosted GPU runner pool.
-- **Environments:** `dev` (single small cell), `staging` (UK cell, production-like), `prod-uk`, `prod-eu`, `prod-us`. Promotion by Argo CD; production changes only via merged PRs.
+- **Environments:** `local` (Docker Compose cell, below), `dev` (single small cell), `staging` (UK cell, production-like), `prod-uk`, `prod-eu`, `prod-us`. A node reaches `dev` only after its e2e tests pass in `local` [NFR-O5]. Promotion by Argo CD; production changes only via merged PRs.
+- **Local cell [NFR-O5].** `make up` starts the cell with Docker Compose:
+  - LiveKit server (same image as CI), PostgreSQL with the RLS migrations, Redis, and every service in `services/`;
+  - local stand-ins for AWS services (S3, SQS, KMS, Secrets Manager) and a local OIDC provider in place of Cognito *(emulator choice and licence verified in LC1)*;
+  - the LLM endpoint is configurable (A-01): a stub for tests, or Bedrock in the test account with synthetic data;
+  - avatar engine profiles: `cpu` (stand-in avatar evolved from the S3 synthetic generator; any host, including macOS) and `gpu` (real models through the NVIDIA Container Toolkit on a Linux host).
+- **Connect from the local cell.** Connect runs only in AWS, so the Visavox test Connect instance stays in the test account. Its flow Lambda (CA3 stack) and A2A collaborator reach the local session API and agent runtime through an authenticated TLS tunnel (tool chosen in S2). The customer client and the agent workspace run in a browser on the same machine, joining Connect in the cloud and LiveKit in the local cell. The tunnel carries synthetic test data only and is closed when tests end.
 
 ## 15. Observability and SLOs
 Trace context propagates from API through session service, agent runtime, avatar worker and Connect bridge, tagged with session ID and Connect contact ID [CNA-04, NFR-O1]. SLO dashboards for every NFR-L and NFR-A target; burn-rate alerts; per-tenant GPU-seconds and cost per session-minute [BIL-03, NFR-O3].
@@ -352,6 +385,11 @@ Trace context propagates from API through session service, agent runtime, avatar
 | R-05 | LiveKit avatar worker API is Python-only and its reference example was removed | Contract tests and version guard; upstream tracking |
 | R-06 | Connect has no supported agent-side bot video; A2A coverage of WebRTC contacts unverified; softphone/Chime A/V skew for human-voice avatars Avatar tile chosen (D-09); spike S2 before CA1; written AWS confirmation before any virtual-agent workaround |
 | R-07 | Transport and sync path alone measured at ~230 ms median, 192–241 ms (S3, zero model time), above the 50–100 ms network share budgeted in §7.2; NFR-L2 p50 ≤ 1.0 s is at risk | S1 measures the end-to-end turn with real models; evaluate smaller `AvatarRunner` queues (private argument, version-guarded) and request a public option upstream |
+| R-08 | No commercially licensed streaming model renders upper body with hands within NFR-L3 on one GPU (best released: about 1.2 s to first frame on 2–5 GPUs, about 5 fps on one) | Live gestures come from the gesture planner over Studio footage (§6.6); Photo avatars get head motion live; S5 re-checks streaming models each quarter |
+| R-09 | Adobe patent US12347135B2 (gesture reenactment from video motion graphs, active to about 2043) may read on the gesture planner | Counsel review in G1 before E1 builds the planner; S5 documents design-around options (for example learned clip selection instead of graph search) |
+| R-10 | Upper-body framing and gestures raise GPU per stream and cost (R-02) | S5 measures streams per GPU; head-and-shoulders stays as a density framing option |
+| R-11 | Hand artefacts (wrong finger counts, smearing) look uncanny | NFR-Q7 gate fails the avatar version or render; the planner replays real hand footage instead of generating hands |
+| R-12 | The local cell drifts from the cloud cell, so local passes hide cloud failures | Same container images and Helm values feed both; `dev` reruns the e2e suite after every promotion |
 | Q-01..08 | Counsel questions: special-category status of generative models; employee consent; SB 942 / TAKE IT DOWN coverage; who labels Art 50(4) deepfakes; whether model updates reset the AI Act grace period; SB 1001 and voice; WebRTC marking sufficiency; EU→US transfers if the DPF falls | G1 |
 
 ## 17. Architecture decision records (`docs/adr/`)
@@ -363,9 +401,9 @@ Trace context propagates from API through session service, agent runtime, avatar
 | [003](docs/adr/ADR-003-languages.md) | Python backend and engine, TypeScript front end | Accepted |
 | [004](docs/adr/ADR-004-aurora-postgres-rls.md) | Aurora PostgreSQL with row-level security | Accepted |
 | [005](docs/adr/ADR-005-licence-registry-gate.md) | Model licence registry gate in CI | Accepted |
-| 006 | Model selection | Pending S1 |
+| 006 | Model selection, including head-motion and gesture models | Pending S1, S5 |
 | [007](docs/adr/ADR-007-connect-avatar-tile.md) | Connect pattern A via avatar tile | Accepted (mechanism details confirmed in S2) |
 | 008 | Consent, liveness and verification components | Pending S4 |
 
 ## Appendix A — Research sources (2026-10-17)
-Primary sources for every external claim in §3.3, §6.1, §7.3, §8.1 and §10.1 are listed in [`docs/research/sources-2026-10-17.md`](docs/research/sources-2026-10-17.md).
+Primary sources for every external claim in §3.3, §6.1, §7.3, §8.1 and §10.1 are listed in [`docs/research/sources-2026-10-17.md`](docs/research/sources-2026-10-17.md). Sources for §6.6 and the v1.1 model rows are in [`docs/research/sources-2026-10-22.md`](docs/research/sources-2026-10-22.md).
