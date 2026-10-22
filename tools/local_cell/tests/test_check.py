@@ -103,9 +103,12 @@ class TestCli:
         out = capsys.readouterr().out
         assert "LC005 livekit" in out
 
-    def test_unreadable_compose_exits_two(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    @pytest.mark.parametrize("text", ["services: [unclosed\n", "volumes: {}\n", "- not a mapping\n"])
+    def test_unreadable_compose_exits_two(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], text: str
+    ) -> None:
         compose = tmp_path / "deploy" / "local" / "compose.yaml"
         compose.parent.mkdir(parents=True)
-        compose.write_text("services: [unclosed\n")
+        compose.write_text(text)
         assert main(["--root", str(tmp_path)]) == 2
         assert "compose error" in capsys.readouterr().err

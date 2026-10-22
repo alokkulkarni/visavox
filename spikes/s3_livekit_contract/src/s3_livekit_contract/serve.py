@@ -26,6 +26,10 @@ OPTIONS = AvatarOptions(
 REQUIRED = ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "AVATAR_ROOM", "AGENT_IDENTITY")
 
 
+class RoomClosedError(RuntimeError):
+    """LiveKit closed the avatar's room. The process exits so Docker's restart policy rejoins it."""
+
+
 class Closeable(Protocol):
     async def aclose(self) -> None: ...
 
@@ -64,8 +68,9 @@ async def serve(
 ) -> None:
     """Join the room, report ready, and serve until `stop` is set.
 
-    Ready means joined and waiting for the agent, which may arrive much later. A failed start ends serving
-    with its error, so the container exits and Docker restarts it. The worker is always closed.
+    Ready means joined and waiting for the agent, which may arrive much later. A failed start, or LiveKit
+    closing the room (it does once only agents remain), ends serving with an error, so the container exits
+    and Docker restarts it. The worker is always closed.
     """
     token = avatar_token(
         api_key=config.api_key,
@@ -74,6 +79,7 @@ async def serve(
         avatar_identity=config.avatar_identity,
         agent_identity=config.agent_identity,
     )
+    disconnected = asyncio.Event()
     starting = asyncio.ensure_future(
         start(
             url=config.url,
@@ -81,18 +87,23 @@ async def serve(
             agent_identity=config.agent_identity,
             options=OPTIONS,
             on_joined=lambda: config.ready_file.write_text("ready\n"),
+            on_disconnected=disconnected.set,
         )
     )
     stopping = asyncio.ensure_future(stop.wait())
+    dropped = asyncio.ensure_future(disconnected.wait())
     worker: Closeable | None = None
     try:
-        done, _ = await asyncio.wait({starting, stopping}, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait({starting, stopping, dropped}, return_when=asyncio.FIRST_COMPLETED)
         if starting in done:
             worker = starting.result()
-            await stopping
+            done, _ = await asyncio.wait({stopping, dropped}, return_when=asyncio.FIRST_COMPLETED)
+        if stopping not in done:
+            raise RoomClosedError("LiveKit closed the room; exiting so the container restarts and rejoins")
     finally:
         config.ready_file.unlink(missing_ok=True)
         stopping.cancel()
+        dropped.cancel()
         if worker is not None:
             await worker.aclose()
         elif not starting.done():

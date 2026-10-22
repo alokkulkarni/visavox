@@ -34,13 +34,17 @@ async def start_avatar_worker(
     agent_identity: str,
     options: AvatarOptions,
     on_joined: Callable[[], object] | None = None,
+    on_disconnected: Callable[[], object] | None = None,
 ) -> AvatarWorker:
     """Connect with an avatar token and start streaming synchronised A/V driven by `agent_identity`.
 
-    Returns once the agent has joined, because AvatarRunner waits for it; `on_joined` fires as soon as the
-    room is joined. The room is left if starting fails or is cancelled.
+    Returns once the agent has joined, because AvatarRunner waits for it. `on_joined` fires as soon as the
+    room is joined; `on_disconnected` fires when the room is left for any reason, including the server
+    closing it. The room is left if starting fails or is cancelled.
     """
     room = rtc.Room()
+    if on_disconnected is not None:
+        room.on("disconnected", lambda *_: on_disconnected())
     await room.connect(url, token, rtc.RoomOptions(auto_subscribe=False))
     try:
         if on_joined is not None:
