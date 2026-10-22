@@ -296,7 +296,7 @@ For every node: **QA-Tester-Agent** writes failing tests from the requirement ID
 
 | ID | Node | Parents | Requirements |
 |---|---|---|---|
-| S1 | Spike: model bake-off on g6 / g7e / p5 — latency, fps, quality, streams per GPU, cost | F0 | NFR-L, NFR-Q, NFR-O3, NFR-S6 |
+| S1 | Spike: model bake-off on g6 / g7e / p5 — latency, fps, quality (including speech-driven head motion), streams per GPU, cost | F0 | NFR-L, NFR-Q, NFR-O3, NFR-S6, RT-11 |
 | S2 | Spike: Connect pattern A and B feasibility in a Visavox test Connect instance, driven from the local cell | F0, LC1 | CNA, CNB, NFR-O5 |
 | S3 | Spike: LiveKit avatar contract on self-hosted server and LiveKit Cloud | F0 | LK, RT-06 |
 | S4 | Spike: liveness, face and speaker verification selection and error rates | F0 | CON-02, NFR-S5 |
@@ -311,7 +311,7 @@ For every node: **QA-Tester-Agent** writes failing tests from the requirement ID
 | K1 | Consent service and capture page | C2, S4 | CON-01..06, CMP-01..04 |
 | A2 | Avatar build pipeline, versioning, deletion, gesture library | A1, K1, S1, S5 | AVA-04..08, RT-12, CMP-13 |
 | V1 | Voice service: stock, clone, lexicon, watermark | C2, K1, S1 | VOI-01..05 |
-| E1 | Real-time engine core, head motion, gesture planner | A2, S1, S5, G1 (patent) | RT-02, RT-03, RT-11, RT-12, NFR-L3, NFR-Q |
+| E1 | Real-time engine core, head motion, gesture planner (the planner sub-task waits for G1's opinion on US12347135B2, R-09) | A2, S1, S5 | RT-02, RT-03, RT-11, RT-12, NFR-L3, NFR-Q |
 | E2 | Session placement, warm pool, autoscaling | E1, F1 | NFR-L1, NFR-A2 |
 | R1 | Session API, events, transcripts, recording | C2, E2 | RT-01, RT-08..10 |
 | LK1 | Avatar worker LiveKit contract (external audio) | E1, S3 | RT-06, LK-01 |
