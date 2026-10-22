@@ -3,7 +3,8 @@
 Sources for the banned lists: research of 2026-10-17 recorded in
 docs/research/sources-2026-10-17.md (InsightFace model licence, CelebAMask-HQ terms,
 dlib iBUG 300-W restriction, CodeFormer S-Lab licence, Basel Face Model 2009, and
-non-commercial or revenue-capped TTS licences).
+non-commercial or revenue-capped TTS licences), and research of 2026-10-22 in
+docs/research/sources-2026-10-22.md (SMPL-X and AMASS licences, OpenPose licence).
 """
 
 from __future__ import annotations
@@ -47,7 +48,9 @@ BANNED_LICENCE_PATTERN = re.compile(r"(-NC-|-NC$|noncommercial|non-commercial|re
 # Weight files and components that are non-commercial even when the host repo is permissive.
 BANNED_COMPONENT_PATTERN = re.compile(
     r"insightface|buffalo_[a-z]|scrfd|2d106det|det_(?:10g|2\.5g|500m)|glintr100|w600k|inswapper"
-    r"|79999_iter|celebamask|shape_predictor_68|codeformer|basel[ _-]?face|morphablemodel|(?<![a-z])bfm",
+    r"|79999_iter|celebamask|shape_predictor_68|codeformer|basel[ _-]?face|morphablemodel|(?<![a-z])bfm"
+    # SMPL/SMPL-H/SMPL-X body models, AMASS motion data and OpenPose weights (spec v1.1, gestures).
+    r"|(?<![a-z])smpl|(?<![a-z])amass|openpose",
     re.I,
 )
 
