@@ -45,12 +45,21 @@ class FakeWorker:
 
 
 class FakeStart:
-    def __init__(self) -> None:
+    """Joins (calls on_joined), then waits for `agent_arrives` before returning, like AvatarRunner."""
+
+    def __init__(self, agent_arrives: asyncio.Event | None = None, error: Exception | None = None) -> None:
         self.calls: list[dict[str, Any]] = []
         self.worker = FakeWorker()
+        self.agent_arrives = agent_arrives
+        self.error = error
 
     async def __call__(self, **kwargs: Any) -> FakeWorker:
         self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        kwargs["on_joined"]()
+        if self.agent_arrives is not None:
+            await self.agent_arrives.wait()
         return self.worker
 
 
@@ -108,6 +117,25 @@ class TestServe:
         with pytest.raises(asyncio.CancelledError):
             await task
         assert start.worker.closed
+        assert not config.ready_file.exists()
+
+    async def test_is_ready_and_stoppable_before_any_agent_arrives(self, tmp_path: Path) -> None:
+        """The healthcheck must pass while the avatar waits for its agent (NFR-O5)."""
+        config = ServeConfig.from_env(env(tmp_path))
+        start, stop = FakeStart(agent_arrives=asyncio.Event()), asyncio.Event()
+        task = asyncio.create_task(serve(config, stop, start=start))
+        await asyncio.wait_for(_until(lambda: config.ready_file.exists()), timeout=2)
+        stop.set()
+        await asyncio.wait_for(task, timeout=2)
+        assert not config.ready_file.exists()
+        assert not start.worker.closed  # never handed over: start was cancelled, which leaves the room itself
+
+    async def test_failure_to_start_ends_serving_with_the_error(self, tmp_path: Path) -> None:
+        """A crash must exit the process so Docker restarts it, not leave an idle unhealthy container."""
+        config = ServeConfig.from_env(env(tmp_path))
+        start = FakeStart(error=ConnectionError("livekit unreachable"))
+        with pytest.raises(ConnectionError, match="livekit unreachable"):
+            await asyncio.wait_for(serve(config, asyncio.Event(), start=start), timeout=2)
         assert not config.ready_file.exists()
 
 
