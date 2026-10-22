@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| DAG node | S2 (parents: F0) |
-| Requirements | CNA-01..06, CNB-01..04, NFR-L2, NFR-Q2 |
-| Output | `docs/spikes/S2-results.md`, ADR-007 updated from "Accepted" to "Confirmed" (or a spec-change PR), test-instance IaC in `infra/test-connect/` |
+| DAG node | S2 (parents: F0, LC1 — the local cell, per spec v1.1 #21) |
+| Requirements | CNA-01..06, CNB-01..04, NFR-L2, NFR-Q2, NFR-O5 |
+| Output | `docs/spikes/S2-results.md`, ADR-007 updated from "Accepted" to "Confirmed" (or a spec-change PR), test-instance IaC in `infra/test-connect/`, local-cell Connect wiring (tunnel and test flows) reused by CA1–CB2 e2e tests |
 | Timebox | 8 working days once a Connect test instance exists |
 | Status | Planned — **blocked on AWS test account (see §5)** |
 
@@ -20,11 +20,14 @@
 | Q6 | Chat: can streamed AI-agent chunks (ChatJS ≥ 5.3, Touchpoint) be assembled into sentences in order? Can Lex full messages be voiced without reordering? | CNB-02 | 20-turn chat test, no reordering |
 | Q7 | Which Chime video resolution and frame rate do Connect meetings use for agent video? | NFR-Q1 | Recorded from WebRTC stats |
 | Q8 | Is everything above available in all three launch regions? | TEN-02 | Region matrix completed |
+| Q9 | Which authenticated TLS tunnel lets the Connect flow Lambda and the A2A collaborator reach the local cell, and what latency does it add? | NFR-O5, CNA-06 | Lambda calls and A2A `wss://` work through the tunnel; tunnel is authenticated, short-lived and closed after tests; added latency recorded |
 
 ## 2. Method
 - Use a Visavox-owned AWS test account, separate from any tenant or employer estate.
 - Create one Connect instance per launch region with web, in-app and video calling enabled, the Customer tier for A2A, and test flows built from the Visavox flow module.
-- Avatar media comes from a stub avatar worker (synthetic audio-reactive video) in a self-hosted LiveKit server. S2 tests integration, not models.
+- **Local first (NFR-O5).** The Visavox side runs in the local Docker cell (LC1) on a developer machine: LiveKit, the stub avatar worker (synthetic audio-reactive video, `cpu` profile) and a minimal session endpoint. S2 tests integration, not models.
+- Connect exists only in AWS. Its flow Lambda and the A2A collaborator reach the local cell through an authenticated TLS tunnel (Q9). The customer client (Touchpoint or a custom Chime client with the Visavox web SDK) and the agent workspace run in a browser on the same machine, joining Connect in the cloud and LiveKit locally.
+- Only synthetic content crosses the tunnel. The tunnel is opened for a test run and closed afterwards.
 - Measure latency and A/V skew with WebRTC `getStats()` and audio-visual clap markers recorded at the customer client.
 - Every experiment is scripted, so results can be re-run before CA1 starts.
 
