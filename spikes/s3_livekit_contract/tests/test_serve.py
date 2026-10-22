@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from s3_livekit_contract import serve as serve_module
-from s3_livekit_contract.serve import ServeConfig, main, serve
+from s3_livekit_contract.serve import RoomClosedError, ServeConfig, main, serve
 
 SECRET = "test-secret-0123456789-abcdefghijklmnop"
 
@@ -57,6 +57,7 @@ class FakeStart:
         self.calls.append(kwargs)
         if self.error is not None:
             raise self.error
+        self.disconnect = kwargs["on_disconnected"]
         kwargs["on_joined"]()
         if self.agent_arrives is not None:
             await self.agent_arrives.wait()
@@ -136,6 +137,32 @@ class TestServe:
         start = FakeStart(error=ConnectionError("livekit unreachable"))
         with pytest.raises(ConnectionError, match="livekit unreachable"):
             await asyncio.wait_for(serve(config, asyncio.Event(), start=start), timeout=2)
+        assert not config.ready_file.exists()
+
+
+class TestRoomClosedByServer:
+    """LiveKit closes rooms that hold only agents; the process must exit so Docker rejoins it (NFR-O5)."""
+
+    async def test_while_waiting_for_the_agent(self, tmp_path: Path) -> None:
+        config = ServeConfig.from_env(env(tmp_path))
+        start = FakeStart(agent_arrives=asyncio.Event())
+        task = asyncio.create_task(serve(config, asyncio.Event(), start=start))
+        await asyncio.wait_for(_until(lambda: config.ready_file.exists()), timeout=2)
+        start.disconnect()
+        with pytest.raises(RoomClosedError):
+            await asyncio.wait_for(task, timeout=2)
+        assert not config.ready_file.exists()
+
+    async def test_while_serving_the_agent(self, tmp_path: Path) -> None:
+        config = ServeConfig.from_env(env(tmp_path))
+        start = FakeStart()
+        task = asyncio.create_task(serve(config, asyncio.Event(), start=start))
+        await asyncio.wait_for(_until(lambda: bool(start.calls) and config.ready_file.exists()), timeout=2)
+        await asyncio.sleep(0)
+        start.disconnect()
+        with pytest.raises(RoomClosedError):
+            await asyncio.wait_for(task, timeout=2)
+        assert start.worker.closed
         assert not config.ready_file.exists()
 
 

@@ -56,9 +56,16 @@ class StartFakes:
         self.runner_start = runner_start
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        calls, runner_start = self.calls, self.runner_start
+        calls, runner_start, fakes = self.calls, self.runner_start, self
 
         class Room:
+            def __init__(self) -> None:
+                fakes.room = self
+                self.handlers: dict[str, Any] = {}
+
+            def on(self, event: str, handler: Any) -> None:
+                self.handlers[event] = handler
+
             async def connect(self, url: str, token: str, options: Any) -> None:
                 calls.append("room.connect")
 
@@ -78,9 +85,14 @@ class StartFakes:
         monkeypatch.setattr(worker_module, "AvatarRunner", Runner)
 
 
-async def start(on_joined: Any = None) -> AvatarWorker:
+async def start(on_joined: Any = None, on_disconnected: Any = None) -> AvatarWorker:
     return await worker_module.start_avatar_worker(
-        url="ws://livekit:7880", token="t", agent_identity="agent", options=OPTIONS, on_joined=on_joined
+        url="ws://livekit:7880",
+        token="t",
+        agent_identity="agent",
+        options=OPTIONS,
+        on_joined=on_joined,
+        on_disconnected=on_disconnected,
     )
 
 
@@ -126,3 +138,17 @@ async def test_room_is_left_when_start_is_cancelled_while_waiting_for_the_agent(
     with pytest.raises(asyncio.CancelledError):
         await task
     assert calls[-1] == "room.disconnect"
+
+
+async def test_on_disconnected_fires_when_the_server_closes_the_room(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LiveKit closes a room once only agents remain; the avatar must notice rather than linger (NFR-O5)."""
+    calls: list[str] = []
+
+    async def agent_arrives() -> None:
+        pass
+
+    fakes = StartFakes(calls, agent_arrives)
+    fakes.install(monkeypatch)
+    await start(on_disconnected=lambda: calls.append("disconnected"))
+    fakes.room.handlers["disconnected"]("ROOM_CLOSED")
+    assert calls[-1] == "disconnected"

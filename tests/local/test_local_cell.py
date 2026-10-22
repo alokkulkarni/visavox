@@ -156,8 +156,17 @@ async def _speak_one_second() -> tuple[float, bool, int]:
         async for _ in rtc.VideoStream(track):
             frames.append(time.monotonic())
 
+    async def first_frame() -> None:
+        while not frames:
+            if watcher.done():
+                watcher.result()  # surface the watcher's error instead of waiting out the timeout
+            await asyncio.sleep(0.05)
+
     watcher = asyncio.create_task(watch())
     try:
+        # Speak only once the viewer is receiving video, or the turn races the subscription (as S3 does).
+        await asyncio.wait_for(first_frame(), timeout=20)
+        t0 = time.monotonic()
         out = DataStreamAudioOutput(
             agent,
             destination_identity=AVATAR_IDENTITY,
@@ -172,7 +181,7 @@ async def _speak_one_second() -> tuple[float, bool, int]:
         out.flush()
         event = await asyncio.wait_for(out.wait_for_playout(), timeout=20)
         await asyncio.sleep(0.5)
-        return event.playback_position, event.interrupted, len(frames)
+        return event.playback_position, event.interrupted, sum(1 for t in frames if t >= t0)
     finally:
         watcher.cancel()
         await asyncio.gather(watcher, return_exceptions=True)

@@ -62,7 +62,11 @@ class ServeConfig:
 async def serve(
     config: ServeConfig, stop: asyncio.Event, *, start: StartWorker = start_avatar_worker
 ) -> None:
-    """Join the room, report ready, and serve until `stop` is set; always close the worker."""
+    """Join the room, report ready, and serve until `stop` is set.
+
+    Ready means joined and waiting for the agent, which may arrive much later. A failed start ends serving
+    with its error, so the container exits and Docker restarts it. The worker is always closed.
+    """
     token = avatar_token(
         api_key=config.api_key,
         api_secret=config.api_secret,
@@ -70,13 +74,30 @@ async def serve(
         avatar_identity=config.avatar_identity,
         agent_identity=config.agent_identity,
     )
-    worker = await start(url=config.url, token=token, agent_identity=config.agent_identity, options=OPTIONS)
+    starting = asyncio.ensure_future(
+        start(
+            url=config.url,
+            token=token,
+            agent_identity=config.agent_identity,
+            options=OPTIONS,
+            on_joined=lambda: config.ready_file.write_text("ready\n"),
+        )
+    )
+    stopping = asyncio.ensure_future(stop.wait())
+    worker: Closeable | None = None
     try:
-        config.ready_file.write_text("ready\n")
-        await stop.wait()
+        done, _ = await asyncio.wait({starting, stopping}, return_when=asyncio.FIRST_COMPLETED)
+        if starting in done:
+            worker = starting.result()
+            await stopping
     finally:
         config.ready_file.unlink(missing_ok=True)
-        await worker.aclose()
+        stopping.cancel()
+        if worker is not None:
+            await worker.aclose()
+        elif not starting.done():
+            starting.cancel()
+            await asyncio.gather(starting, return_exceptions=True)
 
 
 def main() -> None:
