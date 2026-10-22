@@ -1,0 +1,18 @@
+[project]
+name = "local-cell"
+version = "0.1.0"
+description = "Checks that every Visavox service runs in the local Docker cell (NFR-O5, SDD §14)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.scripts]
+local-cell-check = "local_cell.check:main"
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/local_cell"]

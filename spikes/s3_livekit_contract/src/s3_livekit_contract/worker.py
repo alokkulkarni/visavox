@@ -6,6 +6,7 @@ contract is exercised exactly as LiveKit ships it.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from livekit import rtc
@@ -27,19 +28,38 @@ class AvatarWorker:
 
 
 async def start_avatar_worker(
-    *, url: str, token: str, agent_identity: str, options: AvatarOptions
+    *,
+    url: str,
+    token: str,
+    agent_identity: str,
+    options: AvatarOptions,
+    on_joined: Callable[[], object] | None = None,
+    on_disconnected: Callable[[], object] | None = None,
 ) -> AvatarWorker:
-    """Connect with an avatar token and start streaming synchronised A/V driven by `agent_identity`."""
+    """Connect with an avatar token and start streaming synchronised A/V driven by `agent_identity`.
+
+    Returns once the agent has joined, because AvatarRunner waits for it. `on_joined` fires as soon as the
+    room is joined; `on_disconnected` fires when the room is left for any reason, including the server
+    closing it. The room is left if starting fails or is cancelled.
+    """
     room = rtc.Room()
+    if on_disconnected is not None:
+        room.on("disconnected", lambda *_: on_disconnected())
     await room.connect(url, token, rtc.RoomOptions(auto_subscribe=False))
-    receiver = DataStreamAudioReceiver(room, sender_identity=agent_identity)
-    generator = SyntheticVideoGenerator(
-        width=options.video_width,
-        height=options.video_height,
-        fps=int(options.video_fps),
-        sample_rate=options.audio_sample_rate,
-        num_channels=options.audio_channels,
-    )
-    runner = AvatarRunner(room, audio_recv=receiver, video_gen=generator, options=options)
-    await runner.start()
+    try:
+        if on_joined is not None:
+            on_joined()
+        receiver = DataStreamAudioReceiver(room, sender_identity=agent_identity)
+        generator = SyntheticVideoGenerator(
+            width=options.video_width,
+            height=options.video_height,
+            fps=int(options.video_fps),
+            sample_rate=options.audio_sample_rate,
+            num_channels=options.audio_channels,
+        )
+        runner = AvatarRunner(room, audio_recv=receiver, video_gen=generator, options=options)
+        await runner.start()
+    except BaseException:
+        await room.disconnect()
+        raise
     return AvatarWorker(room=room, runner=runner)

@@ -1,0 +1,112 @@
+# Visavox local cell (NFR-O5, SDD §14). `make up` starts it, `make test-local` checks it, `make down` removes it.
+# Synthetic data only. Every published port is bound to loopback except LiveKit's WebRTC media port; images are
+# pinned by multi-arch digest (arm64 and amd64). `make local-check` enforces both, and that every services/<name>
+# folder has a Dockerfile and a health-checked entry here.
+#
+# LIVEKIT_NODE_IP is this machine's network address, set by `make up`: the host browser and the containers both
+# reach LiveKit's media port through it.
+name: visavox-local
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.10@sha256:89ca9ce0791e18d6e03bf6e2c49ceb27e1c754eae8bd50c989386c1a5963791a
+    command: ["--dev", "--bind", "0.0.0.0", "--node-ip", "${LIVEKIT_NODE_IP:?run make up, which sets it}"]
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "127.0.0.1:7881:7881"
+      - "7882:7882/udp"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:7880"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # Stands in for Aurora PostgreSQL (ADR-004). init.sql creates the owner and the non-owner app role.
+  postgres:
+    image: postgres:17.11-alpine@sha256:1bcc18d81671b02906296aad470ec9778a6b71016ce953092024b680bad007b0
+    environment:
+      POSTGRES_PASSWORD: local-only
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/10-visavox-roles.sql:ro
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "visavox_app", "-d", "visavox"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # Stands in for ElastiCache, whose current engine is Valkey (BSD-3-Clause).
+  valkey:
+    image: valkey/valkey:8.1.10-alpine@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # Stands in for S3, SQS, KMS and Secrets Manager (Moto server, Apache-2.0). Accepts any credentials.
+  aws:
+    image: motoserver/moto:5.2.4@sha256:120b1589c6df7e35d2092935f6ff724486bb2c4189d0e36ce795baba1400ffd2
+    ports:
+      - "127.0.0.1:55000:5000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5000/moto-api/"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # Stands in for Cognito as the OIDC provider (mock-oauth2-server, MIT). Issuer: http://localhost:58080/visavox
+  oidc:
+    image: ghcr.io/navikt/mock-oauth2-server:6.0.8@sha256:3a20ed622fdcd0d316cbb9868ebf5df10ae89440f6c136a89f23a3adccf99dbb
+    ports:
+      - "127.0.0.1:58080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/visavox/.well-known/openid-configuration"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # CPU stand-in avatar (`cpu` engine profile): serves the LiveKit avatar contract in room `local-demo` for the
+  # agent `local-agent`. LK1 replaces it with services/avatar-engine.
+  avatar:
+    build:
+      context: ../..
+      dockerfile: deploy/local/avatar-standin/Dockerfile
+    image: visavox/avatar-standin:local
+    # LiveKit closes a room once only agents remain; the avatar then exits and rejoins through this policy.
+    restart: unless-stopped
+    environment:
+      # Container-to-container on the private local Docker network, synthetic data only; cloud cells use wss (SDD §11).
+      LIVEKIT_URL: ws://livekit:7880  # nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret
+      AVATAR_ROOM: local-demo
+      AGENT_IDENTITY: local-agent
+      AVATAR_IDENTITY: local-avatar
+    depends_on:
+      livekit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/avatar-ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # `gpu` profile: proves the NVIDIA Container Toolkit works on a Linux GPU host (`make gpu-check`). The toolkit
+  # mounts nvidia-smi into the container. Cannot run on macOS; validated on the S1 GPU runner.
+  gpu-check:
+    image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+    profiles: ["gpu"]
+    command: ["nvidia-smi"]
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

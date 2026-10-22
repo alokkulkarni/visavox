@@ -1,0 +1,20 @@
+# Keep image build contexts small and free of local state (NFR-O5, CLAUDE.md rule 23).
+.git
+.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+node_modules
+.env
+.env.*
+docs
+models/licences
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.ckpt
+*.bin
+*.mp4
+*.wav
