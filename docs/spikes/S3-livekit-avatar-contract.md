@@ -6,7 +6,7 @@
 | Requirements | RT-02, RT-03, RT-06, LK-01, LK-02, LK-04, NFR-L5, NFR-Q1 |
 | Output | `docs/spikes/S3-results.md`, contract test suite `tests/contract/livekit_avatar/` (reused by LK1), spike worker in `spikes/s3_livekit_contract/` |
 | Timebox | 5 working days |
-| Status | **In progress.** Runs in CI against a self-hosted LiveKit server container. The LiveKit Cloud run needs a Cloud project key from the owner. |
+| Status | **Complete for self-hosted LiveKit** (results in [`S3-results.md`](S3-results.md), merged in #7). One exit criterion is open: the LiveKit Cloud run, which needs a Cloud project key from the owner. |
 
 ## 1. Questions this spike must answer
 1. Can a Visavox avatar worker built on `livekit-agents` 1.8.x (`AvatarRunner` + `DataStreamAudioReceiver` + our `VideoGenerator`) satisfy the contract a stock LiveKit agent expects? The agent side uses the unmodified `DataStreamAudioOutput` (RT-06, LK-02).
