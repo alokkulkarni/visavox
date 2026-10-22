@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.0 |
-| Date | 2026-10-17 |
-| Status | **FROZEN 2026-10-17** (approved by the owner in PR #1). Changes need a spec-change PR per `CLAUDE.md` rule 2. |
+| Version | 1.1 (proposed) |
+| Date | 2026-10-22 |
+| Status | v1.0 **FROZEN 2026-10-17** (approved by the owner in PR #1). v1.1 adds D-10..D-12 (issue #14) and is frozen when the owner approves and merges its PR. Changes need a spec-change PR per `CLAUDE.md` rule 2. |
 | Owner | Alok Kulkarni |
 | Companion | [`SDD.md`](SDD.md) (design), [`CLAUDE.md`](CLAUDE.md) (engineering rules) |
 
@@ -33,6 +33,9 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 | D-07 | Footprint | Multi-region; tenant chooses data region; 200+ concurrent live sessions |
 | D-08 | Product / repo | Visavox, `alokkulkarni/visavox` |
 | D-09 | Connect pattern A mechanism | **Avatar tile** in the customer's call client via the Visavox web SDK, using supported Connect APIs only (owner, 2026-10-17). Headless virtual-agent workaround is out of scope for R1 (§4.2). |
+| D-10 | Hand gestures | **In Release 1, in live sessions and scripted renders** (owner, 2026-10-22). Delivery per avatar type: RT-12, VID-07. |
+| D-11 | Head motion | **Speech-driven head motion is an explicit, measured requirement** (owner, 2026-10-22): RT-11, NFR-Q6. |
+| D-12 | Local-first testing | **Every component runs in a local Docker cell and is tested against Amazon Connect before any cloud deployment** (owner, 2026-10-22): NFR-O5. |
 
 ## 3. Actors
 
@@ -51,6 +54,7 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 ### 4.1 In scope for Release 1
 - Tenant self-service console and public REST API with webhooks.
 - Avatar creation from a single photo (*Photo avatar*) and from a 1–3 minute video (*Studio avatar*).
+- Speech-driven head motion and co-speech hand gestures (D-10, D-11).
 - Stock voice catalogue and voice cloning from an audio sample.
 - Likeness consent, liveness and identity-match verification before any avatar or voice clone can be used.
 - Real-time sessions in LiveKit rooms, Connect pattern A, Connect pattern B.
@@ -58,7 +62,9 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 - Region pinning (UK, EU, US at launch), metering, audit, AI disclosure, watermarking and provenance.
 
 ### 4.2 Out of scope for Release 1 (candidate backlog)
-- Full-body avatars, hand gestures, multiple avatars in one scene, avatar walking or camera moves.
+- Full-body (below the waist) avatars, multiple avatars in one scene, avatar walking or camera moves.
+- Live hand gestures for Photo avatars. A photo carries no recorded gesture motion, and no commercially licensed streaming model generated upper-body video with hands within NFR-L3 on one GPU at 2026-10-22 (`SDD.md` §6.6). Photo avatars get head motion live (RT-11) and gestures in renders (VID-07). Reconsider when such a model exists.
+- Gestures chosen from the meaning of the words (pointing, counting, iconic gestures). Release 1 gestures follow the rhythm and emphasis of the speech audio.
 - Video-to-video dubbing or translation of tenant-uploaded footage.
 - Native iOS/Android SDKs (Connect's own mobile SDKs receive avatar video as ordinary remote video).
 - Marketplace of stock human avatars (Release 1 ships tenant-owned likenesses plus a small set of synthetic, non-real-person stock avatars).
@@ -71,7 +77,7 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 |---|---|---|
 | A-01 | **Confirmed by owner.** The LLM behind the built-in AI agent is pluggable; default is Amazon Bedrock in the tenant's region. "Self-hosted" (D-03) applies to avatar, voice, lip-sync, STT and TTS models, not the LLM. | A self-hosted LLM adds a GPU fleet and changes cost and latency budgets. |
 | A-02 | Tenants may also bring their own agent (a LiveKit Agents worker, or a Connect Lex / AI agent bot); Visavox then acts only as the avatar renderer. | None — additive. |
-| A-03 | Release 1 avatars are head-and-shoulders framing at 720p for live and 1080p for rendered video. | Higher resolution live video needs bigger GPUs per stream. |
+| A-03 | Release 1 avatars use **upper-body framing** (head, shoulders, torso and hands) by default, with head-and-shoulders as a framing option, at 720p for live and 1080p for rendered video. | Wider framing and gestures need more GPU per stream; streams per GPU are re-measured in S1/S5 (`SDD.md` §6.4). |
 | A-04 | Launch regions: UK (eu-west-2), EU (eu-central-1), US (us-east-1). | New regions are a deployment of the same regional cell. |
 | A-05 | Billing is usage-metered; Release 1 exports usage to Stripe for invoicing. | Different billing provider changes only the export adapter. |
 | A-06 | English (UK/US) at launch for STT/TTS/AI agent; at least 5 further languages are a Release 1 SHOULD, subject to model support. | Language list drives model selection. |
@@ -96,10 +102,10 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 | ID | Pri | Requirement | Acceptance criteria |
 |---|---|---|---|
 | AVA-01 | MUST | Create a **Photo avatar** from one image (JPEG/PNG/HEIC/WebP, ≤ 20 MB). | AC: valid upload produces a usable avatar; status transitions are emitted via webhook. |
-| AVA-02 | MUST | Create a **Studio avatar** from a 1–3 minute video (MP4/MOV, ≥ 720p, ≥ 25 fps, single speaker facing camera). | AC: valid upload produces an avatar whose live output scores at or above the Photo avatar baseline on the quality metrics in NFR-Q. |
-| AVA-03 | MUST | Automated input quality gate: exactly one face, minimum face size, frontal pose limits, blur, exposure, occlusion, and for video: continuous presence, stable lighting. | AC: each failure returns a specific, user-readable reason; a labelled test set of good and bad inputs passes at ≥ 95 % agreement. |
+| AVA-02 | MUST | Create a **Studio avatar** from a 1–3 minute video (MP4/MOV, ≥ 720p, ≥ 25 fps, single speaker facing camera, framed from the waist up with both hands in frame, speaking with natural gestures). | AC: valid upload produces an avatar whose live output scores at or above the Photo avatar baseline on the quality metrics in NFR-Q, with a gesture library for RT-12 built from the clip. |
+| AVA-03 | MUST | Automated input quality gate: exactly one face, minimum face size, frontal pose limits, blur, exposure, occlusion, and for video: continuous presence, stable lighting. For upper-body inputs: torso and both hands in frame and not cropped; for Studio video: enough gesturing footage to build the RT-12 gesture library. A Photo avatar whose image is a headshot is accepted with head motion only, and the reason is shown. | AC: each failure returns a specific, user-readable reason; a labelled test set of good and bad inputs passes at ≥ 95 % agreement. |
 | AVA-04 | MUST | An avatar cannot be previewed beyond a watermarked still, used live or rendered until its likeness consent is **Verified** (CON-01..05). | AC: API and engine refuse unverified avatars with `consent_required`. |
-| AVA-05 | MUST | Avatar settings: framing/crop, background (transparent, colour, image), idle behaviour (blink, breathing, micro head motion), default voice. | AC: settings persist and apply in live and rendered output. |
+| AVA-05 | MUST | Avatar settings: framing/crop (upper body or head-and-shoulders), background (transparent, colour, image), idle behaviour (blink, breathing, micro head motion), head-motion intensity (subtle, natural, expressive), gesture intensity (off, subtle, natural, expressive), default voice. | AC: settings persist and apply in live and rendered output. |
 | AVA-06 | MUST | Avatars are versioned; a session or render pins an avatar version. | AC: editing an avatar never changes an in-flight session. |
 | AVA-07 | MUST | Deleting an avatar removes source media, derived models, caches and previews in its region. | AC: deletion completes within 24 h; verification job proves no remaining objects; audit event recorded. |
 | AVA-08 | SHOULD | A small catalogue of **synthetic stock avatars** (no real person) is available to every tenant. | AC: catalogue avatars carry provenance showing they are synthetic. |
@@ -139,6 +145,8 @@ Real-time avatars run inside **Amazon Connect** contacts (two patterns, §6.6–
 | RT-08 | MUST | Session events (started, speaking, interrupted, escalated, ended, error) via webhooks and a per-session event stream. | AC: event schema contract tests. |
 | RT-09 | MUST | Optional session recording (tenant setting, off by default), stored in region with C2PA manifest and watermarks. | AC: recording only exists when enabled; retention honoured. |
 | RT-10 | MUST | Conversation transcript and LLM tool calls are logged per session for the tenant (PII-redaction option). | AC: transcript available via API within 60 s of session end. |
+| RT-11 | MUST | **Speech-driven head motion**: while the avatar speaks, its head nods, tilts and turns in time with the rhythm and emphasis of the speech, for both avatar types and in every drive mode. It never holds a static head while speaking. | AC: NFR-Q6 passes in automated media tests for every drive mode. |
+| RT-12 | MUST | **Co-speech hand gestures, live**: a Studio avatar gestures with its hands and arms in time with the speech, in every drive mode, using motion from the likeness subject's own recorded footage. Hands rest when the avatar is idle or listening, and start returning to rest within 300 ms of a barge-in (RT-03). Photo avatars show RT-11 head motion only in live sessions (§4.2). | AC: NFR-Q6 and NFR-Q7 pass in media tests; render overhead stays within NFR-L3; rest-pose timing measured in the latency harness. |
 
 ### 6.6 Amazon Connect pattern A — avatar answers Connect video calls (CNA)
 
@@ -181,6 +189,7 @@ Research on 2026-10-17 found no supported way for a bot to be the agent-side par
 | VID-04 | MUST | Renders are asynchronous with progress, webhook on completion, signed download URL, and in-region storage. | AC: e2e test. |
 | VID-05 | MUST | Scripts are moderated against the acceptable-use policy before rendering. | AC: policy test set blocked; audit event. |
 | VID-06 | MUST | Every rendered file carries a C2PA manifest and invisible audio and video watermarks. | AC: C2PA validator and watermark detector pass on every render in CI samples. |
+| VID-07 | MUST | Rendered videos include speech-driven head motion (RT-11) and co-speech hand gestures, for Studio avatars and for Photo avatars whose source image shows the upper body with both hands, honouring the AVA-05 gesture settings. | AC: NFR-Q6 and NFR-Q7 pass on CI render samples; NFR-L6 still met. |
 
 ### 6.10 Console, API and SDKs (API)
 
@@ -231,7 +240,9 @@ Research on 2026-10-17 found no supported way for a bot to be the agent-side par
 | NFR-Q2 | Audio/video sync within +45 ms / −125 ms (audio leading / lagging), per ITU-R BT.1359. |
 | NFR-Q3 | Lip-sync accuracy measured by SyncNet confidence/offset (LSE-C/LSE-D) at or above the chosen baseline from the model bake-off (S1). |
 | NFR-Q4 | Identity preservation: face-embedding similarity between source and output above the bake-off threshold. |
-| NFR-Q5 | Human panel MOS ≥ 4.0/5 for naturalness on the release evaluation set. |
+| NFR-Q5 | Human panel MOS ≥ 4.0/5 for naturalness, including head motion and gestures, on the release evaluation set. |
+| NFR-Q6 | Head motion while speaking: Beat Alignment Score between head-motion peaks and speech onsets at or above the S1/S5 bake-off baseline, and head-pose variation (standard deviation of yaw, pitch and roll) inside the band measured on real speakers in the evaluation set: neither frozen nor jittery. |
+| NFR-Q7 | Hands: Hand Keypoint Confidence (HKC) at or above, and Hand Keypoint Variance (HKV) inside, the bands set by the S5 bake-off; gesture Beat Alignment Score at or above the bake-off baseline. |
 
 ### 7.3 Availability, scale, resilience (NFR-A)
 
@@ -261,6 +272,7 @@ Research on 2026-10-17 found no supported way for a bot to be the agent-side par
 | NFR-O2 | SLO dashboards and alerts for every NFR-L and NFR-A target. |
 | NFR-O3 | GPU cost per live session-minute and per rendered minute reported daily; target set after S1. |
 | NFR-O4 | All infrastructure defined as code; every region is the same cell module with region parameters. |
+| NFR-O5 | **Local-first.** Every service, the avatar engine and LiveKit run as a **local cell** with Docker Compose from one command. A node is demonstrated and its e2e tests pass in the local cell before it deploys to any cloud environment. Connect integrations (CNA, CNB) are tested from the local cell against the Visavox test Connect instance through an authenticated tunnel. GPU models run locally on a Linux host with an NVIDIA GPU; on hosts without one (for example macOS), a CPU stand-in avatar keeps every non-quality test runnable. The local cell holds synthetic data only. |
 
 ## 8. Compliance requirements (CMP)
 
@@ -293,3 +305,5 @@ Derived from regulatory research dated 2026-10-17, summarised with sources in `S
 | Drive mode | What makes the avatar speak: AI agent, human voice, or external audio |
 | Regional cell | The full Visavox data plane deployed in one region |
 | Likeness subject | The real person whose face/voice is reproduced |
+| Gesture library | Indexed clips of the likeness subject's own hand, arm and head motion, built from a Studio avatar's source video (RT-12) |
+| Local cell | The whole Visavox data plane running on one machine with Docker Compose, holding synthetic data only (NFR-O5) |

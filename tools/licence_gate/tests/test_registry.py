@@ -116,12 +116,24 @@ class TestBannedComponents:
             ("components", ["CodeFormer"]),
             ("components", ["01_MorphableModel.mat (Basel Face Model 2009)"]),
             ("components", ["scrfd_10g"]),
+            # Body models and motion data behind most audio-to-gesture generators (spec v1.1, issue #14).
+            ("components", ["smplx"]),
+            ("components", ["SMPL-X_NEUTRAL_2020.npz"]),
+            ("components", ["SMPLH_male.pkl"]),
+            ("components", ["amass"]),
+            ("components", ["openpose body_pose_model.pth"]),
         ],
     )
     def test_banned_components_are_rejected(
         self, write_registry: Callable[..., Path], field: str, value: object
     ) -> None:
         assert "LG006" in codes(write_registry(model_entry(**{field: value})))
+
+    @pytest.mark.parametrize("component", ["dwpose", "rtmw-x", "flame-2023-open", "simplex-noise"])
+    def test_commercial_pose_and_face_components_are_not_mistaken_for_banned_ones(
+        self, write_registry: Callable[..., Path], component: str
+    ) -> None:
+        assert "LG006" not in codes(write_registry(model_entry(components=[component])))
 
     def test_banned_artefact_file_is_rejected(
         self, write_registry: Callable[..., Path], tmp_path: Path
